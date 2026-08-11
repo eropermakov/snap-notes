@@ -1,0 +1,43 @@
+export const IPC = {
+  NOTES_LIST: 'notes:list',
+  NOTES_CREATE: 'notes:create',
+  NOTES_UPDATE: 'notes:update',
+  NOTES_DELETE: 'notes:delete',
+  NOTES_TOGGLE_PIN: 'notes:togglePin',
+  NOTES_SET_ACTIVE: 'notes:setActive',
+  NOTES_LIST_TRASH: 'notes:listTrash',
+  NOTES_RESTORE: 'notes:restore',
+  NOTES_PERMANENT_DELETE: 'notes:permanentDelete',
+  NOTES_EMPTY_TRASH: 'notes:emptyTrash',
+
+  SETTINGS_GET: 'settings:get',
+  SETTINGS_UPDATE: 'settings:update',
+  SETTINGS_TEST_API_KEY: 'settings:testApiKey',
+  SETTINGS_GET_DATA_PATH: 'settings:getDataPath',
+  SETTINGS_OPEN_DATA_FOLDER: 'settings:openDataFolder',
+  SETTINGS_EXPORT_NOTES: 'settings:exportNotes',
+  SETTINGS_RESET_ALL: 'settings:resetAll',
+  SETTINGS_GET_STORAGE_STATS: 'settings:getStorageStats',
+  SETTINGS_GET_USAGE: 'settings:getUsage',
+  SETTINGS_CLEAR_SCREENSHOT_CACHE: 'settings:clearScreenshotCache',
+
+  APP_GET_VERSION: 'app:getVersion',
+  APP_OPEN_EXTERNAL: 'app:openExternal',
+  APP_CHECK_FOR_UPDATES: 'app:checkForUpdates',
+  APP_INSTALL_UPDATE: 'app:installUpdate',
+
+  OVERLAY_READY: 'overlay:ready',
+  OVERLAY_IMAGE: 'overlay:image',
+  OVERLAY_SELECTION: 'overlay:selection',
+  OVERLAY_CANCEL: 'overlay:cancel',
+
+  ON_NOTE_CREATED: 'on:note:created',
+  ON_NOTE_UPDATED: 'on:note:updated',
+  ON_NOTE_DELETED: 'on:note:deleted',
+  ON_NOTE_PROCESSING_START: 'on:note:processingStart',
+  ON_NOTE_PROCESSING_END: 'on:note:processingEnd',
+  ON_TOAST: 'on:toast',
+  ON_NAVIGATE: 'on:navigate',
+  ON_TRAY_NEW_NOTE_CAPTURE: 'on:tray:newNoteCapture',
+  ON_UPDATE_READY: 'on:update:ready'
+} as const
