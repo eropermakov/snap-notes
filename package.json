@@ -63,7 +63,8 @@
     "publish": {
       "provider": "github",
       "owner": "eropermakov",
-      "repo": "snap-notes"
+      "repo": "snap-notes",
+      "releaseType": "release"
     },
     "files": [
       "out/**/*",
