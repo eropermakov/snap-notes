@@ -1,5 +1,5 @@
-import { autoUpdater } from 'electron-updater'
-import { BrowserWindow } from 'electron'
+import { autoUpdater, UpdateInfo } from 'electron-updater'
+import { app, BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
 import { is } from '@electron-toolkit/utils'
 import { IPC } from '../shared/ipc'
@@ -50,12 +50,41 @@ export async function checkForUpdatesNow(): Promise<{ ok: boolean; message: stri
   if (is.dev) {
     return { ok: false, message: 'Проверка обновлений недоступна в режиме разработки' }
   }
-  try {
-    await autoUpdater.checkForUpdates()
-    return { ok: true, message: 'Проверка запущена — если есть обновление, оно скачается в фоне' }
-  } catch (err) {
-    return { ok: false, message: (err as Error).message }
-  }
+
+  return new Promise((resolve) => {
+    let settled = false
+
+    const cleanup = (): void => {
+      autoUpdater.removeListener('update-available', onAvailable)
+      autoUpdater.removeListener('update-not-available', onNotAvailable)
+      autoUpdater.removeListener('error', onError)
+    }
+
+    const finish = (result: { ok: boolean; message: string }): void => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(result)
+    }
+
+    const onAvailable = (info: UpdateInfo): void => {
+      finish({ ok: true, message: `Найдена новая версия ${info.version} — скачивается в фоне` })
+    }
+
+    const onNotAvailable = (): void => {
+      finish({ ok: true, message: `У вас уже последняя версия (${app.getVersion()})` })
+    }
+
+    const onError = (err: Error): void => {
+      finish({ ok: false, message: `Не удалось проверить обновления: ${err.message}` })
+    }
+
+    autoUpdater.once('update-available', onAvailable)
+    autoUpdater.once('update-not-available', onNotAvailable)
+    autoUpdater.once('error', onError)
+
+    autoUpdater.checkForUpdates().catch(onError)
+  })
 }
 
 export function installUpdateNow(): void {
