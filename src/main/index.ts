@@ -17,8 +17,14 @@ import { AppSettings, HotkeyRegistrationResult } from '../shared/types'
 
 const CACHE_PURGE_INTERVAL_MS = 30 * 60 * 1000
 
+function backgroundColorForTheme(theme: AppSettings['theme']): string {
+  return theme.endsWith('-dark') ? '#1E1F22' : '#F7F8FA'
+}
+
 const preloadPath = join(__dirname, '../preload/index.js')
-const iconPath = join(__dirname, '../../resources/icon.png')
+const iconPath = app.isPackaged
+  ? join(process.resourcesPath, 'resources/icon.png')
+  : join(__dirname, '../../resources/icon.png')
 
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
@@ -36,7 +42,7 @@ function applyHotkeys(settings: AppSettings): HotkeyRegistrationResult {
 
 function showMainWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
-    mainWindow = createMainWindow(preloadPath, iconPath)
+    mainWindow = createMainWindow(preloadPath, iconPath, backgroundColorForTheme(getSettings().theme))
     attachWindowLifecycle(mainWindow)
     return
   }
@@ -87,6 +93,10 @@ async function handleSettingsChanged(
     applyTray(next)
   }
 
+  if (next.theme !== prev.theme && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBackgroundColor(backgroundColorForTheme(next.theme))
+  }
+
   if (next.launchAtStartup !== prev.launchAtStartup || next.minimizeToTray !== prev.minimizeToTray) {
     try {
       await syncAutoLaunch(next.launchAtStartup, next.minimizeToTray)
@@ -130,7 +140,7 @@ if (!gotLock) {
     await initNotesStore()
     await initScreenshotCache()
 
-    mainWindow = createMainWindow(preloadPath, iconPath)
+    mainWindow = createMainWindow(preloadPath, iconPath, backgroundColorForTheme(getSettings().theme))
     attachWindowLifecycle(mainWindow)
     initCapturePipeline(() => mainWindow)
     prewarmOverlay(preloadPath)

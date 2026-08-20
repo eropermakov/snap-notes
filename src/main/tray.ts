@@ -13,6 +13,9 @@ export function createTray(handlers: TrayHandlers): Tray {
   if (tray) return tray
 
   const base = nativeImage.createFromPath(handlers.iconPath)
+  if (base.isEmpty()) {
+    console.error('[tray] icon failed to load from', handlers.iconPath)
+  }
   const trayImage = base.isEmpty() ? base : base.resize({ width: 16, height: 16, quality: 'best' })
   tray = new Tray(trayImage)
   tray.setToolTip('Snap Notes')

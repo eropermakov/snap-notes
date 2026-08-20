@@ -11,14 +11,14 @@ export function loadRoute(win: BrowserWindow, hash?: string): void {
   }
 }
 
-export function createMainWindow(preloadPath: string, iconPath: string): BrowserWindow {
+export function createMainWindow(preloadPath: string, iconPath: string, backgroundColor: string): BrowserWindow {
   const win = new BrowserWindow({
     width: 1180,
     height: 760,
     minWidth: 760,
     minHeight: 520,
     show: false,
-    backgroundColor: '#F7F8FA',
+    backgroundColor,
     autoHideMenuBar: true,
     icon: iconPath,
     title: 'Snap Notes',
