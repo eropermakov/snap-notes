@@ -25,6 +25,7 @@ export const IPC = {
   APP_OPEN_EXTERNAL: 'app:openExternal',
   APP_CHECK_FOR_UPDATES: 'app:checkForUpdates',
   APP_INSTALL_UPDATE: 'app:installUpdate',
+  APP_CAPTURE_DOCUMENT: 'app:captureDocument',
 
   OVERLAY_READY: 'overlay:ready',
   OVERLAY_IMAGE: 'overlay:image',
@@ -39,5 +40,6 @@ export const IPC = {
   ON_TOAST: 'on:toast',
   ON_NAVIGATE: 'on:navigate',
   ON_TRAY_NEW_NOTE_CAPTURE: 'on:tray:newNoteCapture',
+  ON_UPDATE_AVAILABLE: 'on:update:available',
   ON_UPDATE_READY: 'on:update:ready'
 } as const

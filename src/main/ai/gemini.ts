@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai'
 import { AiError, classifyError, withTimeout } from './errors'
 import { buildOcrPrompt, buildTextFormatPrompt } from '../../shared/ocrPresets'
+import { buildDocumentPrompt } from '../../shared/documentPrompt'
 import type { ApiKeyTestResult, OcrPreset } from '../../shared/types'
 
 const MODEL_ID = 'gemini-3.5-flash'
@@ -38,6 +39,36 @@ export async function extractRawWithGemini(
   const ai = new GoogleGenAI({ apiKey: apiKey.trim() })
   const base64 = pngBuffer.toString('base64')
   const prompt = buildOcrPrompt(preset, existingContext)
+
+  try {
+    const response = await withTimeout(
+      ai.models.generateContent({
+        model: MODEL_ID,
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }, { inlineData: { mimeType: 'image/png', data: base64 } }]
+          }
+        ]
+      }),
+      GENERATION_TIMEOUT_MS,
+      'Превышено время ожидания ответа от Gemini.'
+    )
+    return (response.text ?? '').trim()
+  } catch (err) {
+    if (err instanceof AiError) throw err
+    throw classifyError(err)
+  }
+}
+
+export async function extractDocumentBlocksRaw(apiKey: string, pngBuffer: Buffer): Promise<string> {
+  if (!apiKey || !apiKey.trim()) {
+    throw new AiError('no-key', 'API-ключ Gemini не задан.')
+  }
+
+  const ai = new GoogleGenAI({ apiKey: apiKey.trim() })
+  const base64 = pngBuffer.toString('base64')
+  const prompt = buildDocumentPrompt()
 
   try {
     const response = await withTimeout(

@@ -68,20 +68,20 @@ export default function AiKeysManager({ keys, usage, onChange }: Props): ReactEl
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           onClick={() => addKey('gemini')}
-          className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3 py-1.5 text-sm text-ink transition-colors hover:border-accent"
+          className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3 py-1.5 text-sm text-ink transition hover:border-accent active:scale-[0.97]"
         >
           <PlusIcon className="h-3.5 w-3.5" /> Добавить ключ Gemini
         </button>
         <button
           onClick={() => addKey('groq')}
-          className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3 py-1.5 text-sm text-ink transition-colors hover:border-accent"
+          className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3 py-1.5 text-sm text-ink transition hover:border-accent active:scale-[0.97]"
         >
           <PlusIcon className="h-3.5 w-3.5" /> Добавить ключ Groq
         </button>
         <button
           onClick={() => addKey('local')}
           disabled={keys.some((k) => k.provider === 'local')}
-          className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3 py-1.5 text-sm text-ink transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3 py-1.5 text-sm text-ink transition hover:border-accent active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
         >
           <PlusIcon className="h-3.5 w-3.5" /> Добавить локальное распознавание
         </button>
@@ -122,7 +122,7 @@ function AiKeyRow({ index, entry, usageToday, onUpdate, onRemove }: RowProps): R
           <span className="truncate text-sm font-medium text-ink">{entry.label}</span>
           {usageToday > 0 && <span className="shrink-0 text-xs text-muted">· {usageToday} сегодня</span>}
         </div>
-        <button onClick={onRemove} className="shrink-0 text-muted transition-colors hover:text-danger" title="Удалить">
+        <button onClick={onRemove} className="shrink-0 text-muted transition hover:text-danger active:scale-[0.97]" title="Удалить">
           <TrashIcon className="h-4 w-4" />
         </button>
       </div>
@@ -133,14 +133,14 @@ function AiKeyRow({ index, entry, usageToday, onUpdate, onRemove }: RowProps): R
           <button
             onClick={() => void handleTest()}
             disabled={testState === 'testing'}
-            className="rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition hover:bg-accent-hover active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
           >
             {testState === 'testing' ? 'Подготовка...' : 'Проверить'}
           </button>
         </>
       ) : (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="flex flex-1 items-center gap-2 rounded-lg border border-surface-border bg-bg px-3 py-2">
+          <div className="flex flex-1 items-center gap-2 rounded-lg border border-surface-border bg-bg px-3 py-2 transition-colors focus-within:border-accent">
             <input
               type={visible ? 'text' : 'password'}
               value={entry.apiKey}
@@ -154,7 +154,7 @@ function AiKeyRow({ index, entry, usageToday, onUpdate, onRemove }: RowProps): R
             <button
               type="button"
               onClick={() => setVisible((v) => !v)}
-              className="shrink-0 text-muted hover:text-ink"
+              className="shrink-0 text-muted transition hover:text-ink active:scale-[0.97]"
               title={visible ? 'Скрыть' : 'Показать'}
             >
               {visible ? <EyeOffIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
@@ -163,7 +163,7 @@ function AiKeyRow({ index, entry, usageToday, onUpdate, onRemove }: RowProps): R
           <button
             onClick={() => void handleTest()}
             disabled={!entry.apiKey.trim() || testState === 'testing'}
-            className="shrink-0 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="shrink-0 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition hover:bg-accent-hover active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
           >
             {testState === 'testing' ? 'Проверка...' : 'Проверить'}
           </button>

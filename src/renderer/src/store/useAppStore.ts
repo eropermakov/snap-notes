@@ -17,6 +17,7 @@ interface AppState {
   toasts: ToastPayload[]
   showOnboarding: boolean
   showWhatsNew: boolean
+  updateAvailableVersion: string | null
   updateReadyVersion: string | null
 
   init: () => Promise<void>
@@ -67,6 +68,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   toasts: [],
   showOnboarding: false,
   showWhatsNew: false,
+  updateAvailableVersion: null,
   updateReadyVersion: null,
 
   init: async () => {
@@ -106,6 +108,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ currentView: 'notes', editorNoteId: payload.noteId })
         window.api.notes.setActive(payload.noteId)
       }
+    })
+    window.api.app.onUpdateAvailable((version) => {
+      set({ updateAvailableVersion: version })
     })
     window.api.app.onUpdateReady((version) => {
       set({ updateReadyVersion: version })
@@ -213,5 +218,5 @@ export const useAppStore = create<AppState>((set, get) => ({
   installUpdate: () => {
     void window.api.app.installUpdate()
   },
-  dismissUpdateBanner: () => set({ updateReadyVersion: null })
+  dismissUpdateBanner: () => set({ updateReadyVersion: null, updateAvailableVersion: null })
 }))

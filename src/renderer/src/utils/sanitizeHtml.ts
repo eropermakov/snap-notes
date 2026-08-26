@@ -19,17 +19,20 @@ const ALLOWED_TAGS = new Set([
   'TBODY',
   'TR',
   'TD',
-  'TH'
+  'TH',
+  'IMG'
 ])
 
 const ALLOWED_STYLE_PROPS = new Set(['color', 'background-color'])
 const SAFE_COLOR = /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*[0-9.]+\s*\)|transparent)$/
+const SAFE_IMG_SRC = /^snap-media:\/\/[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+\.png$/
 
 const ALLOWED_CLASSES: Record<string, Set<string>> = {
   SPAN: new Set(['ui-chip']),
   P: new Set(['ocr-flag']),
   UL: new Set(['todo-list']),
-  LI: new Set(['todo-item', 'done'])
+  LI: new Set(['todo-item', 'done']),
+  IMG: new Set(['doc-image'])
 }
 
 function cleanElement(el: Element): void {
@@ -57,6 +60,10 @@ function cleanElement(el: Element): void {
         el.removeAttribute('style')
       }
     } else if ((attr.name === 'colspan' || attr.name === 'rowspan') && (el.tagName === 'TD' || el.tagName === 'TH')) {
+      // keep
+    } else if (attr.name === 'src' && el.tagName === 'IMG') {
+      if (!SAFE_IMG_SRC.test(attr.value)) el.removeAttribute('src')
+    } else if (attr.name === 'alt' && el.tagName === 'IMG') {
       // keep
     } else if (attr.name === 'class') {
       const allowed = ALLOWED_CLASSES[el.tagName]

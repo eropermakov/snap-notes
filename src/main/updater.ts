@@ -1,20 +1,11 @@
 import { autoUpdater, UpdateInfo } from 'electron-updater'
 import { app, BrowserWindow } from 'electron'
-import { randomUUID } from 'crypto'
 import { is } from '@electron-toolkit/utils'
 import { IPC } from '../shared/ipc'
-import type { ToastPayload } from '../shared/types'
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 
 let getWin: (() => BrowserWindow | null) | null = null
-
-function toast(type: ToastPayload['type'], message: string): void {
-  const win = getWin?.() ?? null
-  if (!win || win.isDestroyed()) return
-  const payload: ToastPayload = { id: randomUUID(), type, message }
-  win.webContents.send(IPC.ON_TOAST, payload)
-}
 
 export function initUpdater(getMainWindow: () => BrowserWindow | null): void {
   getWin = getMainWindow
@@ -25,7 +16,10 @@ export function initUpdater(getMainWindow: () => BrowserWindow | null): void {
   autoUpdater.autoInstallOnAppQuit = true
 
   autoUpdater.on('update-available', (info) => {
-    toast('success', `Доступно обновление ${info.version} — скачивается в фоне`)
+    const win = getWin?.()
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(IPC.ON_UPDATE_AVAILABLE, info.version)
+    }
   })
 
   autoUpdater.on('update-downloaded', (info) => {

@@ -73,6 +73,15 @@ export default function Instructions(): ReactElement {
         </section>
 
         <section className="mb-6 rounded-2xl border border-surface-border bg-surface p-5">
+          <h2 className="mb-1 text-sm font-semibold text-ink">Документ из скриншота</h2>
+          <p className="text-sm text-muted">
+            Кнопка со значком страницы над основной «+» на экране заметок — заскриньте область с текстом и фото, и
+            всё встанет в заметку по порядку: текст как текст, фотографии — вырезанными картинками на своих местах.
+            Работает только с ключом Gemini.
+          </p>
+        </section>
+
+        <section className="mb-6 rounded-2xl border border-surface-border bg-surface p-5">
           <h2 className="mb-3 text-sm font-semibold text-ink">Частые вопросы</h2>
           <div className="space-y-4 text-sm">
             <div>

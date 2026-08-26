@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto'
 import { Note } from '../shared/types'
 import { looksLikeHtml, plainTextToHtml } from '../shared/htmlText'
 import { sanitizeNoteHtml } from './htmlSanitize'
+import { deleteNoteImages, deleteAllImages } from './imageStore'
 
 let notesDir: string | null = null
 let cache: Map<string, Note> = new Map()
@@ -133,6 +134,7 @@ export async function permanentlyDeleteNote(id: string): Promise<boolean> {
   } catch {
     /* already gone */
   }
+  await deleteNoteImages(id)
   return true
 }
 
@@ -168,6 +170,7 @@ export async function resetAllNotes(): Promise<void> {
     }
   }
   cache.clear()
+  await deleteAllImages()
 }
 
 export function getNotesDirPath(): string {

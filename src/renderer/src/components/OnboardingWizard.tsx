@@ -157,21 +157,21 @@ export default function OnboardingWizard(): ReactElement {
           <button
             onClick={goBack}
             disabled={stepIndex === 0}
-            className="rounded-full px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-bg disabled:opacity-0"
+            className="rounded-full px-4 py-2 text-sm font-medium text-ink transition hover:bg-bg active:scale-[0.97] disabled:opacity-0 disabled:active:scale-100"
           >
             Назад
           </button>
           {step === 'done' ? (
             <button
               onClick={() => void completeOnboarding()}
-              className="rounded-full bg-accent px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+              className="rounded-full bg-accent px-6 py-2 text-sm font-medium text-white transition hover:bg-accent-hover active:scale-[0.97]"
             >
               Начать пользоваться
             </button>
           ) : (
             <button
               onClick={() => void goNext()}
-              className="rounded-full bg-accent px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+              className="rounded-full bg-accent px-6 py-2 text-sm font-medium text-white transition hover:bg-accent-hover active:scale-[0.97]"
             >
               Далее
             </button>

@@ -99,6 +99,12 @@ const api = {
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke(IPC.APP_OPEN_EXTERNAL, url),
     checkForUpdates: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke(IPC.APP_CHECK_FOR_UPDATES),
     installUpdate: (): Promise<void> => ipcRenderer.invoke(IPC.APP_INSTALL_UPDATE),
+    captureDocument: (): Promise<void> => ipcRenderer.invoke(IPC.APP_CAPTURE_DOCUMENT),
+    onUpdateAvailable: (cb: (version: string) => void): Unsubscribe => {
+      const listener = (_e: unknown, version: string): void => cb(version)
+      ipcRenderer.on(IPC.ON_UPDATE_AVAILABLE, listener)
+      return () => ipcRenderer.removeListener(IPC.ON_UPDATE_AVAILABLE, listener)
+    },
     onUpdateReady: (cb: (version: string) => void): Unsubscribe => {
       const listener = (_e: unknown, version: string): void => cb(version)
       ipcRenderer.on(IPC.ON_UPDATE_READY, listener)

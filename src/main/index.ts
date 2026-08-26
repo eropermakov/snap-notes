@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createMainWindow } from './windows'
@@ -8,11 +8,14 @@ import { getSettings, updateSettings } from './settingsStore'
 import { registerHotkeys, unregisterAllHotkeys } from './hotkeys'
 import { createTray, destroyTray, isTrayActive } from './tray'
 import { initCapturePipeline, runCapture, setActiveNoteId } from './capturePipeline'
+import { initDocumentCapture, runDocumentCapture } from './documentCapture'
+import { initImageProtocol } from './imageStore'
 import { syncAutoLaunch } from './autoLaunch'
 import { initScreenshotCache, purgeExpired } from './screenshotCache'
 import { prewarmOverlay } from './screenshot'
 import { terminateLocalOcr } from './ai/local'
 import { initUpdater } from './updater'
+import { IPC } from '../shared/ipc'
 import { AppSettings, HotkeyRegistrationResult } from '../shared/types'
 
 const CACHE_PURGE_INTERVAL_MS = 30 * 60 * 1000
@@ -58,6 +61,7 @@ function applyTray(settings: AppSettings): void {
         iconPath,
         onOpen: showMainWindow,
         onNewNoteCapture: () => void runCapture('region', preloadPath),
+        onNewDocumentCapture: () => void runDocumentCapture(preloadPath),
         onQuit: () => {
           isQuitting = true
           app.quit()
@@ -143,8 +147,12 @@ if (!gotLock) {
     mainWindow = createMainWindow(preloadPath, iconPath, backgroundColorForTheme(getSettings().theme))
     attachWindowLifecycle(mainWindow)
     initCapturePipeline(() => mainWindow)
+    initDocumentCapture(() => mainWindow)
+    initImageProtocol()
     prewarmOverlay(preloadPath)
     initUpdater(() => mainWindow)
+
+    ipcMain.handle(IPC.APP_CAPTURE_DOCUMENT, () => void runDocumentCapture(preloadPath))
 
     registerIpcHandlers({
       getMainWindow: () => mainWindow,

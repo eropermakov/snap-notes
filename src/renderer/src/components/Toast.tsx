@@ -31,7 +31,7 @@ export default function Toast({ toast, onDismiss }: Props): ReactElement {
         {toast.type === 'error' && <XCircleIcon className="h-4 w-4" />}
       </span>
       <p className="flex-1 text-sm text-ink">{toast.message}</p>
-      <button onClick={onDismiss} className="shrink-0 text-muted hover:text-ink" title="Закрыть">
+      <button onClick={onDismiss} className="shrink-0 text-muted transition hover:text-ink active:scale-[0.97]" title="Закрыть">
         <CloseIcon className="h-3.5 w-3.5" />
       </button>
     </div>

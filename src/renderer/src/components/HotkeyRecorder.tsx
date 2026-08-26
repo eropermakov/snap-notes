@@ -88,7 +88,7 @@ export default function HotkeyRecorder({ label, value, error, onChange }: Props)
       <button
         onClick={() => setRecording(true)}
         onBlur={() => setRecording(false)}
-        className={`min-w-[180px] rounded-lg border px-3 py-2 text-center font-mono text-sm transition-colors ${
+        className={`min-w-[180px] rounded-lg border px-3 py-2 text-center font-mono text-sm transition active:scale-[0.98] ${
           recording
             ? 'border-accent bg-accent-light text-accent'
             : error

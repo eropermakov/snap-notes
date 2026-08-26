@@ -6,6 +6,7 @@ export interface TrayHandlers {
   iconPath: string
   onOpen: () => void
   onNewNoteCapture: () => void
+  onNewDocumentCapture: () => void
   onQuit: () => void
 }
 
@@ -23,6 +24,7 @@ export function createTray(handlers: TrayHandlers): Tray {
   const menu = Menu.buildFromTemplate([
     { label: 'Открыть Snap Notes', click: () => handlers.onOpen() },
     { label: 'Новая заметка + скриншот', click: () => handlers.onNewNoteCapture() },
+    { label: 'Документ из скриншота', click: () => handlers.onNewDocumentCapture() },
     { type: 'separator' },
     { label: 'Выход', click: () => handlers.onQuit() }
   ])

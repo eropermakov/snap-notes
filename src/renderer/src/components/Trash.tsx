@@ -18,7 +18,7 @@ export default function Trash(): ReactElement {
       <div className="mx-auto max-w-2xl px-6 py-8">
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={backToNotes} className="rounded-full p-2 text-muted hover:bg-surface" title="Назад">
+            <button onClick={backToNotes} className="rounded-full p-2 text-muted transition hover:bg-surface active:scale-[0.97]" title="Назад">
               <ChevronLeftIcon className="h-5 w-5" />
             </button>
             <h1 className="text-xl font-semibold text-ink">Корзина</h1>
@@ -26,7 +26,7 @@ export default function Trash(): ReactElement {
           {trashNotes.length > 0 && (
             <button
               onClick={() => setEmptyConfirmOpen(true)}
-              className="rounded-lg border border-danger/40 bg-surface px-3.5 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger-light"
+              className="rounded-lg border border-danger/40 bg-surface px-3.5 py-2 text-sm font-medium text-danger transition hover:bg-danger-light active:scale-[0.97]"
             >
               Очистить корзину
             </button>
@@ -79,10 +79,10 @@ function TrashRow({ note, onRestore, onDelete }: { note: Note; onRestore: () => 
           <p className="mt-1 text-xs text-muted">Удалено {deletedDate}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <button onClick={onRestore} className="rounded-full p-2 text-muted transition-colors hover:bg-accent-light hover:text-accent" title="Восстановить">
+          <button onClick={onRestore} className="rounded-full p-2 text-muted transition hover:bg-accent-light hover:text-accent active:scale-[0.97]" title="Восстановить">
             <RestoreIcon className="h-4 w-4" />
           </button>
-          <button onClick={() => setConfirmOpen(true)} className="rounded-full p-2 text-muted transition-colors hover:bg-danger-light hover:text-danger" title="Удалить навсегда">
+          <button onClick={() => setConfirmOpen(true)} className="rounded-full p-2 text-muted transition hover:bg-danger-light hover:text-danger active:scale-[0.97]" title="Удалить навсегда">
             <TrashIcon className="h-4 w-4" />
           </button>
         </div>

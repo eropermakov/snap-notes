@@ -25,6 +25,7 @@ export default function NoteCard({ note, listMode }: Props): ReactElement {
       <motion.div
         onClick={() => openNote(note.id)}
         whileHover={{ y: -3 }}
+        whileTap={{ scale: 0.98 }}
         transition={{ type: 'spring', stiffness: 300, damping: 26 }}
         className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-surface-border bg-surface p-4 shadow-card transition-shadow hover:shadow-card-hover ${
           listMode ? 'w-full' : ''
@@ -68,7 +69,7 @@ export default function NoteCard({ note, listMode }: Props): ReactElement {
               void togglePin(note.id)
             }}
             title={note.pinned ? 'Открепить' : 'Закрепить'}
-            className={`rounded-full p-2 transition-colors hover:bg-accent-light ${
+            className={`rounded-full p-2 transition hover:bg-accent-light active:scale-[0.97] ${
               note.pinned ? 'text-accent' : 'text-muted'
             }`}
           >
@@ -80,7 +81,7 @@ export default function NoteCard({ note, listMode }: Props): ReactElement {
               setConfirmOpen(true)
             }}
             title="Удалить"
-            className="rounded-full p-2 text-muted transition-colors hover:bg-danger-light hover:text-danger"
+            className="rounded-full p-2 text-muted transition hover:bg-danger-light hover:text-danger active:scale-[0.97]"
           >
             <TrashIcon className="h-4 w-4" />
           </button>

@@ -122,7 +122,7 @@ export default function Settings(): ReactElement {
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-2xl px-6 py-8">
         <div className="mb-6 flex items-center gap-3">
-          <button onClick={backToNotes} className="rounded-full p-2 text-muted hover:bg-surface" title="Назад">
+          <button onClick={backToNotes} className="rounded-full p-2 text-muted transition hover:bg-surface active:scale-[0.97]" title="Назад">
             <ChevronLeftIcon className="h-5 w-5" />
           </button>
           <h1 className="text-xl font-semibold text-ink">Настройки</h1>
@@ -151,7 +151,7 @@ export default function Settings(): ReactElement {
               <button
                 key={preset.id}
                 onClick={() => handlePresetChange(preset.id)}
-                className={`rounded-lg border p-2.5 text-left transition-colors ${
+                className={`rounded-lg border p-2.5 text-left transition active:scale-[0.98] ${
                   settings.ocrPreset === preset.id
                     ? 'border-accent bg-accent-light'
                     : 'border-surface-border hover:border-accent/50'
@@ -246,14 +246,14 @@ export default function Settings(): ReactElement {
                   setRetentionDraft(String(hours))
                   void updateSettings({ screenshotCacheRetentionHours: hours })
                 }}
-                className="w-20 rounded-lg border border-surface-border bg-bg px-2 py-1 text-sm text-ink focus:outline-none"
+                className="w-20 rounded-lg border border-surface-border bg-bg px-2 py-1 text-sm text-ink transition-colors focus:border-accent focus:outline-none"
               />
             </div>
           )}
 
           <button
             onClick={() => void handleClearCache()}
-            className="mt-2 flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-accent"
+            className="mt-2 flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3.5 py-2 text-sm font-medium text-ink transition hover:border-accent active:scale-[0.97]"
           >
             Очистить кэш скриншотов
           </button>
@@ -275,7 +275,7 @@ export default function Settings(): ReactElement {
                 setTrashRetentionDraft(String(days))
                 void updateSettings({ trashRetentionDays: days })
               }}
-              className="w-20 rounded-lg border border-surface-border bg-bg px-2 py-1 text-sm text-ink focus:outline-none"
+              className="w-20 rounded-lg border border-surface-border bg-bg px-2 py-1 text-sm text-ink transition-colors focus:border-accent focus:outline-none"
             />
           </div>
         </section>
@@ -286,20 +286,20 @@ export default function Settings(): ReactElement {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => void window.api.settings.openDataFolder()}
-              className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-accent"
+              className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3.5 py-2 text-sm font-medium text-ink transition hover:border-accent active:scale-[0.97]"
             >
               <FolderIcon className="h-4 w-4" /> Открыть папку
             </button>
             <button
               onClick={() => void handleExport()}
               disabled={exporting}
-              className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-accent disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3.5 py-2 text-sm font-medium text-ink transition hover:border-accent active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
             >
               <DownloadIcon className="h-4 w-4" /> {exporting ? 'Экспорт...' : 'Экспортировать все заметки'}
             </button>
             <button
               onClick={() => setResetOpen(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-danger/40 bg-surface px-3.5 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger-light"
+              className="flex items-center gap-1.5 rounded-lg border border-danger/40 bg-surface px-3.5 py-2 text-sm font-medium text-danger transition hover:bg-danger-light active:scale-[0.97]"
             >
               <ResetIcon className="h-4 w-4" /> Сбросить всё
             </button>

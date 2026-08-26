@@ -108,7 +108,7 @@ export default function NoteEditor({ noteId }: Props): ReactElement | null {
         className="flex h-full w-full max-w-[440px] shrink-0 flex-col border-l border-surface-border bg-surface"
       >
         <div className="flex items-center justify-between border-b border-surface-border px-4 py-3">
-          <button onClick={handleClose} className="rounded-full p-2 text-muted transition-colors hover:bg-bg" title="Закрыть">
+          <button onClick={handleClose} className="rounded-full p-2 text-muted transition hover:bg-bg active:scale-[0.97]" title="Закрыть">
             <CloseIcon className="h-4 w-4" />
           </button>
 
@@ -116,14 +116,14 @@ export default function NoteEditor({ noteId }: Props): ReactElement | null {
             <SaveIndicator state={saveState} />
             <button
               onClick={() => void togglePin(noteId)}
-              className={`rounded-full p-2 transition-colors hover:bg-accent-light ${note.pinned ? 'text-accent' : 'text-muted'}`}
+              className={`rounded-full p-2 transition hover:bg-accent-light active:scale-[0.97] ${note.pinned ? 'text-accent' : 'text-muted'}`}
               title={note.pinned ? 'Открепить' : 'Закрепить'}
             >
               <PinIcon className="h-4 w-4" filled={note.pinned} />
             </button>
             <button
               onClick={() => setConfirmOpen(true)}
-              className="rounded-full p-2 text-muted transition-colors hover:bg-danger-light hover:text-danger"
+              className="rounded-full p-2 text-muted transition hover:bg-danger-light hover:text-danger active:scale-[0.97]"
               title="Удалить"
             >
               <TrashIcon className="h-4 w-4" />
@@ -142,7 +142,7 @@ export default function NoteEditor({ noteId }: Props): ReactElement | null {
               value={title}
               onChange={(e) => handleTitleChange(e.target.value)}
               placeholder="Заголовок"
-              className="w-full bg-transparent text-lg font-semibold text-ink placeholder:text-muted focus:outline-none"
+              className="w-full rounded-md bg-transparent px-1 -mx-1 text-lg font-semibold text-ink placeholder:text-muted transition-colors focus:bg-bg focus:outline-none"
             />
           </div>
 

@@ -26,7 +26,8 @@ export function sanitizeNoteHtml(html: string): string {
       'tbody',
       'tr',
       'td',
-      'th'
+      'th',
+      'img'
     ],
     allowedAttributes: {
       span: ['style', 'class'],
@@ -34,13 +35,15 @@ export function sanitizeNoteHtml(html: string): string {
       ul: ['class'],
       li: ['class'],
       td: ['colspan', 'rowspan'],
-      th: ['colspan', 'rowspan']
+      th: ['colspan', 'rowspan'],
+      img: ['src', 'class', 'alt']
     },
     allowedClasses: {
       span: ['ui-chip'],
       p: ['ocr-flag'],
       ul: ['todo-list'],
-      li: ['todo-item', 'done']
+      li: ['todo-item', 'done'],
+      img: ['doc-image']
     },
     allowedStyles: {
       span: {
@@ -49,6 +52,9 @@ export function sanitizeNoteHtml(html: string): string {
       }
     },
     disallowedTagsMode: 'discard',
-    allowedSchemes: []
+    allowedSchemes: [],
+    allowedSchemesByTag: {
+      img: ['snap-media']
+    }
   })
 }

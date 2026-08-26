@@ -312,6 +312,18 @@ export function EmojiIcon({ className }: IconProps): ReactElement {
   )
 }
 
+export function ScanDocIcon({ className }: IconProps): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <line x1="7.5" y1="7" x2="14.5" y2="7" />
+      <rect x="7.5" y="11.5" width="9" height="6.5" rx="1" />
+      <circle cx="9.8" cy="13.8" r="0.6" fill="currentColor" stroke="none" />
+      <path d="m8 17 2.3-2.3 1.7 1.7 2-2 2.5 2.5" />
+    </svg>
+  )
+}
+
 export function SparkleIcon({ className }: IconProps): ReactElement {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className={className}>

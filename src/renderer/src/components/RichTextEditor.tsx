@@ -38,7 +38,7 @@ function ToolbarButton({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       title={title}
-      className={`rounded-md p-1.5 transition-colors hover:bg-accent-light hover:text-accent ${
+      className={`rounded-md p-1.5 transition hover:bg-accent-light hover:text-accent active:scale-90 ${
         active ? 'bg-accent-light text-accent' : 'text-muted'
       }`}
     >

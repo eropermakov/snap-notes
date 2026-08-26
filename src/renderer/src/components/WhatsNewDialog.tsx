@@ -45,7 +45,7 @@ export default function WhatsNewDialog(): ReactElement {
 
         <button
           onClick={() => void dismissWhatsNew()}
-          className="self-end rounded-full bg-accent px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          className="self-end rounded-full bg-accent px-5 py-2 text-sm font-medium text-white transition hover:bg-accent-hover active:scale-[0.97]"
         >
           Понятно
         </button>

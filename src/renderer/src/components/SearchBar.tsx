@@ -26,7 +26,7 @@ export default function SearchBar(): ReactElement {
       <div className="flex items-center gap-1 rounded-full border border-surface-border bg-surface p-1 shadow-card">
         <button
           onClick={() => setViewMode('grid')}
-          className={`rounded-full p-2 transition-colors ${
+          className={`rounded-full p-2 transition active:scale-[0.97] ${
             viewMode === 'grid' ? 'bg-accent-light text-accent' : 'text-muted hover:bg-accent-light/60'
           }`}
           title="Сетка"
@@ -35,7 +35,7 @@ export default function SearchBar(): ReactElement {
         </button>
         <button
           onClick={() => setViewMode('list')}
-          className={`rounded-full p-2 transition-colors ${
+          className={`rounded-full p-2 transition active:scale-[0.97] ${
             viewMode === 'list' ? 'bg-accent-light text-accent' : 'text-muted hover:bg-accent-light/60'
           }`}
           title="Список"
@@ -46,21 +46,21 @@ export default function SearchBar(): ReactElement {
 
       <button
         onClick={() => void openTrash()}
-        className="rounded-full border border-surface-border bg-surface p-2.5 text-muted shadow-card transition-colors hover:text-accent"
+        className="rounded-full border border-surface-border bg-surface p-2.5 text-muted shadow-card transition hover:text-accent active:scale-[0.97]"
         title="Корзина"
       >
         <TrashIcon className="h-4 w-4" />
       </button>
       <button
         onClick={openSettings}
-        className="rounded-full border border-surface-border bg-surface p-2.5 text-muted shadow-card transition-colors hover:text-accent"
+        className="rounded-full border border-surface-border bg-surface p-2.5 text-muted shadow-card transition hover:text-accent active:scale-[0.97]"
         title="Настройки"
       >
         <GearIcon className="h-4 w-4" />
       </button>
       <button
         onClick={openInstructions}
-        className="rounded-full border border-surface-border bg-surface p-2.5 text-muted shadow-card transition-colors hover:text-accent"
+        className="rounded-full border border-surface-border bg-surface p-2.5 text-muted shadow-card transition hover:text-accent active:scale-[0.97]"
         title="Инструкция"
       >
         <QuestionIcon className="h-4 w-4" />

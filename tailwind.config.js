@@ -43,11 +43,19 @@ export default {
         'pulse-fab': {
           '0%, 100%': { boxShadow: '0 6px 16px var(--color-accent-shadow)' },
           '50%': { boxShadow: '0 6px 28px var(--color-accent-shadow-strong)' }
+        },
+        'pop-in': {
+          '0%': { opacity: '0', transform: 'scale(0.95) translateY(-4px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' }
         }
       },
       animation: {
         shimmer: 'shimmer 1.6s infinite linear',
-        'pulse-fab': 'pulse-fab 2s infinite ease-in-out'
+        'pulse-fab': 'pulse-fab 2s infinite ease-in-out',
+        'pop-in': 'pop-in 160ms cubic-bezier(0.23, 1, 0.32, 1)'
+      },
+      transitionTimingFunction: {
+        out: 'cubic-bezier(0.23, 1, 0.32, 1)'
       }
     }
   },

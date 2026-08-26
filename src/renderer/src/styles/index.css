@@ -197,6 +197,14 @@
   font-weight: 500;
 }
 
+.doc-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--color-surface-border);
+}
+
 .rich-content ul.todo-list {
   list-style: none;
   padding-left: 0.1em;
