@@ -23,7 +23,12 @@ export default function Settings(): ReactElement {
 
   const [aiKeysDraft, setAiKeysDraft] = useState<AiKeyEntry[]>(settings?.aiKeys ?? [])
   const [usage, setUsage] = useState<Record<string, number>>({})
-  const [hotkeyErrors, setHotkeyErrors] = useState<{ region?: string; fullscreen?: string; document?: string }>({})
+  const [hotkeyErrors, setHotkeyErrors] = useState<{
+    region?: string
+    fullscreen?: string
+    document?: string
+    longScreenshot?: string
+  }>({})
   const [dataPath, setDataPath] = useState('')
   const [version, setVersion] = useState('')
   const [resetOpen, setResetOpen] = useState(false)
@@ -66,11 +71,19 @@ export default function Settings(): ReactElement {
     void updateSettings({ theme })
   }
 
-  const handleHotkeyChange = async (kind: 'region' | 'fullscreen' | 'document', accelerator: string): Promise<void> => {
+  const handleHotkeyChange = async (
+    kind: 'region' | 'fullscreen' | 'document' | 'longScreenshot',
+    accelerator: string
+  ): Promise<void> => {
     const nextHotkeys = { ...settings.hotkeys, [kind]: accelerator }
     const result = await updateSettings({ hotkeys: nextHotkeys })
     if (result) {
-      setHotkeyErrors({ region: result.region.error, fullscreen: result.fullscreen.error, document: result.document.error })
+      setHotkeyErrors({
+        region: result.region.error,
+        fullscreen: result.fullscreen.error,
+        document: result.document.error,
+        longScreenshot: result.longScreenshot.error
+      })
       const thisResult = result[kind]
       if (thisResult.ok) {
         pushToast('success', 'Хоткей обновлён')
@@ -189,6 +202,12 @@ export default function Settings(): ReactElement {
               value={settings.hotkeys.document}
               error={hotkeyErrors.document}
               onChange={(acc) => void handleHotkeyChange('document', acc)}
+            />
+            <HotkeyRecorder
+              label="Долгий скриншот (старт/стоп)"
+              value={settings.hotkeys.longScreenshot}
+              error={hotkeyErrors.longScreenshot}
+              onChange={(acc) => void handleHotkeyChange('longScreenshot', acc)}
             />
           </div>
         </section>

@@ -5,16 +5,18 @@ export interface HotkeyHandlers {
   onRegion: () => void
   onFullscreen: () => void
   onDocument: () => void
+  onLongScreenshot: () => void
 }
 
-type HotkeyKind = 'region' | 'fullscreen' | 'document'
+type HotkeyKind = 'region' | 'fullscreen' | 'document' | 'longScreenshot'
 
-const KINDS: HotkeyKind[] = ['region', 'fullscreen', 'document']
+const KINDS: HotkeyKind[] = ['region', 'fullscreen', 'document', 'longScreenshot']
 
 const LABELS: Record<HotkeyKind, string> = {
   region: 'область экрана',
   fullscreen: 'весь экран',
-  document: 'документ из скриншота'
+  document: 'документ из скриншота',
+  longScreenshot: 'долгий скриншот'
 }
 
 export function registerHotkeys(hotkeys: HotkeyConfig, handlers: HotkeyHandlers): HotkeyRegistrationResult {
@@ -23,7 +25,8 @@ export function registerHotkeys(hotkeys: HotkeyConfig, handlers: HotkeyHandlers)
   const result: HotkeyRegistrationResult = {
     region: { ok: false },
     fullscreen: { ok: false },
-    document: { ok: false }
+    document: { ok: false },
+    longScreenshot: { ok: false }
   }
 
   for (const kind of KINDS) {
@@ -47,7 +50,8 @@ export function registerHotkeys(hotkeys: HotkeyConfig, handlers: HotkeyHandlers)
   const handlerByKind: Record<HotkeyKind, () => void> = {
     region: handlers.onRegion,
     fullscreen: handlers.onFullscreen,
-    document: handlers.onDocument
+    document: handlers.onDocument,
+    longScreenshot: handlers.onLongScreenshot
   }
 
   for (const kind of KINDS) {

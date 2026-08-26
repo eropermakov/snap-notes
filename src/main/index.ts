@@ -9,6 +9,7 @@ import { registerHotkeys, unregisterAllHotkeys } from './hotkeys'
 import { createTray, destroyTray, isTrayActive } from './tray'
 import { initCapturePipeline, runCapture, setActiveNoteId } from './capturePipeline'
 import { initDocumentCapture, runDocumentCapture } from './documentCapture'
+import { initLongScreenshot, toggleLongScreenshot, cancelLongScreenshotSession } from './longScreenshot'
 import { initImageProtocol } from './imageStore'
 import { syncAutoLaunch } from './autoLaunch'
 import { initScreenshotCache, purgeExpired } from './screenshotCache'
@@ -32,11 +33,17 @@ const iconPath = app.isPackaged
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
 
-function hotkeyHandlers(): { onRegion: () => void; onFullscreen: () => void; onDocument: () => void } {
+function hotkeyHandlers(): {
+  onRegion: () => void
+  onFullscreen: () => void
+  onDocument: () => void
+  onLongScreenshot: () => void
+} {
   return {
     onRegion: () => void runCapture('region', preloadPath),
     onFullscreen: () => void runCapture('fullscreen', preloadPath),
-    onDocument: () => void runDocumentCapture(preloadPath)
+    onDocument: () => void runDocumentCapture(preloadPath),
+    onLongScreenshot: () => void toggleLongScreenshot(preloadPath)
   }
 }
 
@@ -63,6 +70,7 @@ function applyTray(settings: AppSettings): void {
         onOpen: showMainWindow,
         onNewNoteCapture: () => void runCapture('region', preloadPath),
         onNewDocumentCapture: () => void runDocumentCapture(preloadPath),
+        onToggleLongScreenshot: () => void toggleLongScreenshot(preloadPath),
         onQuit: () => {
           isQuitting = true
           app.quit()
@@ -83,20 +91,23 @@ async function handleSettingsChanged(
   if (
     next.hotkeys.region !== prev.hotkeys.region ||
     next.hotkeys.fullscreen !== prev.hotkeys.fullscreen ||
-    next.hotkeys.document !== prev.hotkeys.document
+    next.hotkeys.document !== prev.hotkeys.document ||
+    next.hotkeys.longScreenshot !== prev.hotkeys.longScreenshot
   ) {
     hotkeyResult = applyHotkeys(next)
 
     const corrected = {
       region: hotkeyResult.region.ok ? next.hotkeys.region : prev.hotkeys.region,
       fullscreen: hotkeyResult.fullscreen.ok ? next.hotkeys.fullscreen : prev.hotkeys.fullscreen,
-      document: hotkeyResult.document.ok ? next.hotkeys.document : prev.hotkeys.document
+      document: hotkeyResult.document.ok ? next.hotkeys.document : prev.hotkeys.document,
+      longScreenshot: hotkeyResult.longScreenshot.ok ? next.hotkeys.longScreenshot : prev.hotkeys.longScreenshot
     }
 
     if (
       corrected.region !== next.hotkeys.region ||
       corrected.fullscreen !== next.hotkeys.fullscreen ||
-      corrected.document !== next.hotkeys.document
+      corrected.document !== next.hotkeys.document ||
+      corrected.longScreenshot !== next.hotkeys.longScreenshot
     ) {
       applyHotkeys({ ...next, hotkeys: corrected })
       updateSettings({ hotkeys: corrected })
@@ -158,6 +169,7 @@ if (!gotLock) {
     attachWindowLifecycle(mainWindow)
     initCapturePipeline(() => mainWindow)
     initDocumentCapture(() => mainWindow)
+    initLongScreenshot(() => mainWindow)
     initImageProtocol()
     prewarmOverlay(preloadPath)
     initUpdater(() => mainWindow)
@@ -193,6 +205,7 @@ if (!gotLock) {
   app.on('before-quit', () => {
     isQuitting = true
     unregisterAllHotkeys()
+    cancelLongScreenshotSession()
     void terminateLocalOcr()
   })
 
