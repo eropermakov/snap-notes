@@ -89,6 +89,7 @@ const api = {
     getDataPath: (): Promise<string> => ipcRenderer.invoke(IPC.SETTINGS_GET_DATA_PATH),
     openDataFolder: (): Promise<OpenFolderResponse> => ipcRenderer.invoke(IPC.SETTINGS_OPEN_DATA_FOLDER),
     exportNotes: (): Promise<ExportResult> => ipcRenderer.invoke(IPC.SETTINGS_EXPORT_NOTES),
+    exportNotesDocx: (): Promise<ExportResult> => ipcRenderer.invoke(IPC.SETTINGS_EXPORT_NOTES_DOCX),
     resetAll: (): Promise<ResetAllResponse> => ipcRenderer.invoke(IPC.SETTINGS_RESET_ALL),
     getStorageStats: (): Promise<StorageStats> => ipcRenderer.invoke(IPC.SETTINGS_GET_STORAGE_STATS),
     getUsage: (): Promise<Record<string, number>> => ipcRenderer.invoke(IPC.SETTINGS_GET_USAGE),

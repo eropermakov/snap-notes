@@ -2,9 +2,12 @@ import { BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
 import { IPC } from '../shared/ipc'
 import * as notesStore from './notesStore'
+import * as settingsStore from './settingsStore'
 import { selectRegionRect, captureDisplayRegion, ScreenRegion } from './screenshot'
 import { stitchFrames } from './imageStitch'
 import { saveDocumentImage, imageSrc } from './imageStore'
+import { buildDocumentNoteBody } from './documentBuilder'
+import { AiError } from './ai/errors'
 import { ToastPayload } from '../shared/types'
 
 const CAPTURE_INTERVAL_MS = 500
@@ -119,14 +122,46 @@ async function finishLongScreenshot(): Promise<void> {
   }
 
   const note = await notesStore.createNote({ title: 'Длинный скриншот' })
-  const imageId = await saveDocumentImage(note.id, stitched)
-  const html = `<p><img class="doc-image" src="${imageSrc(note.id, imageId)}" alt="" /></p>`
-  const updated = await notesStore.updateNote(note.id, { body: html })
-
   broadcast(IPC.ON_NOTE_CREATED, note)
   broadcast(IPC.ON_NAVIGATE, { view: 'editor', noteId: note.id })
+
+  const settings = settingsStore.getSettings()
+  const geminiKey = settings.aiKeys.find((k) => k.provider === 'gemini' && k.apiKey.trim())
+
+  let html: string | null = null
+  let recognized = false
+
+  if (geminiKey) {
+    broadcast(IPC.ON_NOTE_PROCESSING_START, note.id)
+    try {
+      const result = await buildDocumentNoteBody(note.id, geminiKey.apiKey, stitched)
+      if (result) {
+        html = result.html
+        recognized = true
+      }
+    } catch (err) {
+      const message =
+        err instanceof AiError ? err.message : 'Не удалось распознать текст и фото на длинном скриншоте.'
+      toast('warning', `${message} Сохраняю как обычную картинку.`)
+    } finally {
+      broadcast(IPC.ON_NOTE_PROCESSING_END, note.id)
+    }
+  }
+
+  if (!html) {
+    const imageId = await saveDocumentImage(note.id, stitched)
+    html = `<p><img class="doc-image" src="${imageSrc(note.id, imageId)}" alt="" /></p>`
+  }
+
+  const updated = await notesStore.updateNote(note.id, { body: html })
   if (updated) {
     broadcast(IPC.ON_NOTE_UPDATED, updated)
   }
-  toast('success', `Длинный скриншот сохранён (${activeSession.frames.length} кадров)`)
+
+  toast(
+    'success',
+    recognized
+      ? `Длинный скриншот распознан и сохранён (${activeSession.frames.length} кадров)`
+      : `Длинный скриншот сохранён как картинка (${activeSession.frames.length} кадров)`
+  )
 }

@@ -17,18 +17,21 @@ function getImagesRoot(): string {
   return imagesRoot
 }
 
+function resolveSafeImagePath(noteId: string, imageId: string): string | null {
+  if (!SAFE_ID.test(noteId) || !SAFE_ID.test(imageId)) return null
+  const root = path.resolve(getImagesRoot())
+  const filePath = path.resolve(path.join(root, noteId, `${imageId}.png`))
+  if (filePath !== root && !filePath.startsWith(root + path.sep)) return null
+  return filePath
+}
+
 export function initImageProtocol(): void {
   protocol.handle(SCHEME, async (request) => {
     try {
       const url = new URL(request.url)
-      const noteId = url.hostname
       const imageId = url.pathname.replace(/^\//, '').replace(/\.png$/i, '')
-      if (!SAFE_ID.test(noteId) || !SAFE_ID.test(imageId)) {
-        return new Response('Not found', { status: 404 })
-      }
-      const root = path.resolve(getImagesRoot())
-      const filePath = path.resolve(path.join(root, noteId, `${imageId}.png`))
-      if (filePath !== root && !filePath.startsWith(root + path.sep)) {
+      const filePath = resolveSafeImagePath(url.hostname, imageId)
+      if (!filePath) {
         return new Response('Not found', { status: 404 })
       }
       const data = await fs.readFile(filePath)
@@ -37,6 +40,16 @@ export function initImageProtocol(): void {
       return new Response('Not found', { status: 404 })
     }
   })
+}
+
+export async function readNoteImage(noteId: string, imageId: string): Promise<Buffer | null> {
+  const filePath = resolveSafeImagePath(noteId, imageId)
+  if (!filePath) return null
+  try {
+    return await fs.readFile(filePath)
+  } catch {
+    return null
+  }
 }
 
 export async function saveDocumentImage(noteId: string, pngBuffer: Buffer): Promise<string> {

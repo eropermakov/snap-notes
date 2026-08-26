@@ -16,6 +16,7 @@ export const IPC = {
   SETTINGS_GET_DATA_PATH: 'settings:getDataPath',
   SETTINGS_OPEN_DATA_FOLDER: 'settings:openDataFolder',
   SETTINGS_EXPORT_NOTES: 'settings:exportNotes',
+  SETTINGS_EXPORT_NOTES_DOCX: 'settings:exportNotesDocx',
   SETTINGS_RESET_ALL: 'settings:resetAll',
   SETTINGS_GET_STORAGE_STATS: 'settings:getStorageStats',
   SETTINGS_GET_USAGE: 'settings:getUsage',

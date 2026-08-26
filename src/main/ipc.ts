@@ -5,6 +5,7 @@ import * as settingsStore from './settingsStore'
 import { testProviderKey } from './ai/router'
 import { getAllUsageToday } from './ai/usage'
 import { exportNotesToZip } from './exportData'
+import { exportNotesToDocx } from './exportDocx'
 import * as screenshotCache from './screenshotCache'
 import { checkForUpdatesNow, installUpdateNow } from './updater'
 import { htmlToPlainText } from '../shared/htmlText'
@@ -70,6 +71,12 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     const win = ctx.getMainWindow()
     if (!win) return { ok: false, message: 'Окно приложения недоступно' }
     return exportNotesToZip(win, notesStore.listNotes())
+  })
+
+  ipcMain.handle(IPC.SETTINGS_EXPORT_NOTES_DOCX, async () => {
+    const win = ctx.getMainWindow()
+    if (!win) return { ok: false, message: 'Окно приложения недоступно' }
+    return exportNotesToDocx(win, notesStore.listNotes())
   })
 
   ipcMain.handle(IPC.SETTINGS_RESET_ALL, async () => {

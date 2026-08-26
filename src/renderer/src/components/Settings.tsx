@@ -33,6 +33,7 @@ export default function Settings(): ReactElement {
   const [version, setVersion] = useState('')
   const [resetOpen, setResetOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [exportingDocx, setExportingDocx] = useState(false)
   const [stats, setStats] = useState<StorageStats | null>(null)
   const [retentionDraft, setRetentionDraft] = useState(String(settings?.screenshotCacheRetentionHours ?? 24))
   const [trashRetentionDraft, setTrashRetentionDraft] = useState(String(settings?.trashRetentionDays ?? 30))
@@ -104,6 +105,20 @@ export default function Settings(): ReactElement {
       }
     } finally {
       setExporting(false)
+    }
+  }
+
+  const handleExportDocx = async (): Promise<void> => {
+    setExportingDocx(true)
+    try {
+      const result = await window.api.settings.exportNotesDocx()
+      if (result.ok) {
+        pushToast('success', `Документ Word сохранён: ${result.path}`)
+      } else if (!result.canceled) {
+        pushToast('error', result.message ?? 'Не удалось экспортировать в Word.')
+      }
+    } finally {
+      setExportingDocx(false)
     }
   }
 
@@ -320,7 +335,15 @@ export default function Settings(): ReactElement {
               disabled={exporting}
               className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3.5 py-2 text-sm font-medium text-ink transition hover:border-accent active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
             >
-              <DownloadIcon className="h-4 w-4" /> {exporting ? 'Экспорт...' : 'Экспортировать все заметки'}
+              <DownloadIcon className="h-4 w-4" /> {exporting ? 'Экспорт...' : 'Экспортировать в .txt (архив)'}
+            </button>
+            <button
+              onClick={() => void handleExportDocx()}
+              disabled={exportingDocx}
+              className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-bg px-3.5 py-2 text-sm font-medium text-ink transition hover:border-accent active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+              title="Один .docx-файл со всеми заметками, включая фото — открывается в Word и Google Docs"
+            >
+              <DownloadIcon className="h-4 w-4" /> {exportingDocx ? 'Экспорт...' : 'Экспортировать в Word (.docx)'}
             </button>
             <button
               onClick={() => setResetOpen(true)}

@@ -4,10 +4,8 @@ import { IPC } from '../shared/ipc'
 import * as notesStore from './notesStore'
 import * as settingsStore from './settingsStore'
 import { captureRegionAtCursor } from './screenshot'
-import { extractDocumentBlocksRaw } from './ai/gemini'
 import { AiError } from './ai/errors'
-import { parseDocumentBlocks, renderDocumentBlocksToHtml } from '../shared/documentBlocks'
-import { saveDocumentImage, imageSrc, cropToPng } from './imageStore'
+import { buildDocumentNoteBody } from './documentBuilder'
 import { ToastPayload } from '../shared/types'
 
 let capturing = false
@@ -58,26 +56,13 @@ export async function runDocumentCapture(preloadPath: string): Promise<void> {
     broadcast(IPC.ON_NOTE_PROCESSING_START, note.id)
 
     try {
-      const raw = await extractDocumentBlocksRaw(geminiKey.apiKey, buffer)
-      const blocks = parseDocumentBlocks(raw)
-
-      if (blocks.length === 0) {
+      const result = await buildDocumentNoteBody(note.id, geminiKey.apiKey, buffer)
+      if (!result) {
         toast('warning', 'Не удалось найти текст или фото на скриншоте.')
         return
       }
 
-      const imageSrcByIndex = new Map<number, string>()
-      for (let i = 0; i < blocks.length; i++) {
-        const block = blocks[i]
-        if (block.type !== 'image') continue
-        const cropped = cropToPng(buffer, block.bbox)
-        if (!cropped) continue
-        const imageId = await saveDocumentImage(note.id, cropped)
-        imageSrcByIndex.set(i, imageSrc(note.id, imageId))
-      }
-
-      const html = renderDocumentBlocksToHtml(blocks, imageSrcByIndex)
-      const updated = await notesStore.updateNote(note.id, { body: html })
+      const updated = await notesStore.updateNote(note.id, { body: result.html })
       if (updated) {
         broadcast(IPC.ON_NOTE_UPDATED, updated)
         toast('success', 'Документ создан')
