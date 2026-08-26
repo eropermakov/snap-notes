@@ -12,6 +12,7 @@ export interface Note {
 export interface HotkeyConfig {
   region: string
   fullscreen: string
+  document: string
 }
 
 export type AiProvider = 'gemini' | 'groq' | 'local'
@@ -46,7 +47,8 @@ export interface AppSettings {
 
 export const DEFAULT_HOTKEYS: HotkeyConfig = {
   region: 'Control+Shift+S',
-  fullscreen: 'Control+Shift+F'
+  fullscreen: 'Control+Shift+F',
+  document: 'Control+Shift+D'
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -75,6 +77,7 @@ export interface ToastPayload {
 export interface HotkeyRegistrationResult {
   region: { ok: boolean; error?: string }
   fullscreen: { ok: boolean; error?: string }
+  document: { ok: boolean; error?: string }
 }
 
 export interface ApiKeyTestResult {

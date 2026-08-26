@@ -4,6 +4,17 @@ import { HotkeyConfig, HotkeyRegistrationResult } from '../shared/types'
 export interface HotkeyHandlers {
   onRegion: () => void
   onFullscreen: () => void
+  onDocument: () => void
+}
+
+type HotkeyKind = 'region' | 'fullscreen' | 'document'
+
+const KINDS: HotkeyKind[] = ['region', 'fullscreen', 'document']
+
+const LABELS: Record<HotkeyKind, string> = {
+  region: 'область экрана',
+  fullscreen: 'весь экран',
+  document: 'документ из скриншота'
 }
 
 export function registerHotkeys(hotkeys: HotkeyConfig, handlers: HotkeyHandlers): HotkeyRegistrationResult {
@@ -11,43 +22,44 @@ export function registerHotkeys(hotkeys: HotkeyConfig, handlers: HotkeyHandlers)
 
   const result: HotkeyRegistrationResult = {
     region: { ok: false },
-    fullscreen: { ok: false }
+    fullscreen: { ok: false },
+    document: { ok: false }
   }
 
-  if (!hotkeys.region.trim() || !hotkeys.fullscreen.trim()) {
-    if (!hotkeys.region.trim()) result.region = { ok: false, error: 'Комбинация не указана' }
-    if (!hotkeys.fullscreen.trim()) result.fullscreen = { ok: false, error: 'Комбинация не указана' }
-  }
-
-  if (
-    hotkeys.region.trim() &&
-    hotkeys.fullscreen.trim() &&
-    hotkeys.region.toLowerCase() === hotkeys.fullscreen.toLowerCase()
-  ) {
-    result.region = { ok: false, error: 'Совпадает с хоткеем «весь экран»' }
-    result.fullscreen = { ok: false, error: 'Совпадает с хоткеем «область экрана»' }
-    return result
-  }
-
-  if (hotkeys.region.trim() && !result.region.error) {
-    try {
-      const ok = globalShortcut.register(hotkeys.region, handlers.onRegion)
-      result.region = ok
-        ? { ok: true }
-        : { ok: false, error: 'Не удалось зарегистрировать — комбинация уже занята другим приложением' }
-    } catch (err) {
-      result.region = { ok: false, error: (err as Error).message || 'Некорректная комбинация клавиш' }
+  for (const kind of KINDS) {
+    if (!hotkeys[kind].trim()) {
+      result[kind] = { ok: false, error: 'Комбинация не указана' }
     }
   }
 
-  if (hotkeys.fullscreen.trim() && !result.fullscreen.error) {
-    try {
-      const ok = globalShortcut.register(hotkeys.fullscreen, handlers.onFullscreen)
-      result.fullscreen = ok
-        ? { ok: true }
-        : { ok: false, error: 'Не удалось зарегистрировать — комбинация уже занята другим приложением' }
-    } catch (err) {
-      result.fullscreen = { ok: false, error: (err as Error).message || 'Некорректная комбинация клавиш' }
+  for (let i = 0; i < KINDS.length; i++) {
+    for (let j = i + 1; j < KINDS.length; j++) {
+      const a = KINDS[i]
+      const b = KINDS[j]
+      if (result[a].error || result[b].error) continue
+      if (hotkeys[a].toLowerCase() === hotkeys[b].toLowerCase()) {
+        result[a] = { ok: false, error: `Совпадает с хоткеем «${LABELS[b]}»` }
+        result[b] = { ok: false, error: `Совпадает с хоткеем «${LABELS[a]}»` }
+      }
+    }
+  }
+
+  const handlerByKind: Record<HotkeyKind, () => void> = {
+    region: handlers.onRegion,
+    fullscreen: handlers.onFullscreen,
+    document: handlers.onDocument
+  }
+
+  for (const kind of KINDS) {
+    if (hotkeys[kind].trim() && !result[kind].error) {
+      try {
+        const ok = globalShortcut.register(hotkeys[kind], handlerByKind[kind])
+        result[kind] = ok
+          ? { ok: true }
+          : { ok: false, error: 'Не удалось зарегистрировать — комбинация уже занята другим приложением' }
+      } catch (err) {
+        result[kind] = { ok: false, error: (err as Error).message || 'Некорректная комбинация клавиш' }
+      }
     }
   }
 

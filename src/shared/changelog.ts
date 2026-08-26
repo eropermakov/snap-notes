@@ -6,6 +6,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.2.1',
+    date: '2026-08-26',
+    items: [
+      'Добавлен хоткей для «Документ из скриншота» (по умолчанию Control+Shift+D) — настраивается в Настройках рядом с двумя другими хоткеями, работает наравне с кнопкой над «+»'
+    ]
+  },
+  {
     version: '1.2.0',
     date: '2026-08-20',
     items: [

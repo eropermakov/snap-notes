@@ -23,7 +23,7 @@ export default function Settings(): ReactElement {
 
   const [aiKeysDraft, setAiKeysDraft] = useState<AiKeyEntry[]>(settings?.aiKeys ?? [])
   const [usage, setUsage] = useState<Record<string, number>>({})
-  const [hotkeyErrors, setHotkeyErrors] = useState<{ region?: string; fullscreen?: string }>({})
+  const [hotkeyErrors, setHotkeyErrors] = useState<{ region?: string; fullscreen?: string; document?: string }>({})
   const [dataPath, setDataPath] = useState('')
   const [version, setVersion] = useState('')
   const [resetOpen, setResetOpen] = useState(false)
@@ -66,12 +66,12 @@ export default function Settings(): ReactElement {
     void updateSettings({ theme })
   }
 
-  const handleHotkeyChange = async (kind: 'region' | 'fullscreen', accelerator: string): Promise<void> => {
+  const handleHotkeyChange = async (kind: 'region' | 'fullscreen' | 'document', accelerator: string): Promise<void> => {
     const nextHotkeys = { ...settings.hotkeys, [kind]: accelerator }
     const result = await updateSettings({ hotkeys: nextHotkeys })
     if (result) {
-      setHotkeyErrors({ region: result.region.error, fullscreen: result.fullscreen.error })
-      const thisResult = kind === 'region' ? result.region : result.fullscreen
+      setHotkeyErrors({ region: result.region.error, fullscreen: result.fullscreen.error, document: result.document.error })
+      const thisResult = result[kind]
       if (thisResult.ok) {
         pushToast('success', 'Хоткей обновлён')
       } else {
@@ -183,6 +183,12 @@ export default function Settings(): ReactElement {
               value={settings.hotkeys.fullscreen}
               error={hotkeyErrors.fullscreen}
               onChange={(acc) => void handleHotkeyChange('fullscreen', acc)}
+            />
+            <HotkeyRecorder
+              label="Документ из скриншота"
+              value={settings.hotkeys.document}
+              error={hotkeyErrors.document}
+              onChange={(acc) => void handleHotkeyChange('document', acc)}
             />
           </div>
         </section>

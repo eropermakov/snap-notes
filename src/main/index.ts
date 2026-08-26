@@ -32,10 +32,11 @@ const iconPath = app.isPackaged
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
 
-function hotkeyHandlers(): { onRegion: () => void; onFullscreen: () => void } {
+function hotkeyHandlers(): { onRegion: () => void; onFullscreen: () => void; onDocument: () => void } {
   return {
     onRegion: () => void runCapture('region', preloadPath),
-    onFullscreen: () => void runCapture('fullscreen', preloadPath)
+    onFullscreen: () => void runCapture('fullscreen', preloadPath),
+    onDocument: () => void runDocumentCapture(preloadPath)
   }
 }
 
@@ -79,15 +80,24 @@ async function handleSettingsChanged(
 ): Promise<HotkeyRegistrationResult | null> {
   let hotkeyResult: HotkeyRegistrationResult | null = null
 
-  if (next.hotkeys.region !== prev.hotkeys.region || next.hotkeys.fullscreen !== prev.hotkeys.fullscreen) {
+  if (
+    next.hotkeys.region !== prev.hotkeys.region ||
+    next.hotkeys.fullscreen !== prev.hotkeys.fullscreen ||
+    next.hotkeys.document !== prev.hotkeys.document
+  ) {
     hotkeyResult = applyHotkeys(next)
 
     const corrected = {
       region: hotkeyResult.region.ok ? next.hotkeys.region : prev.hotkeys.region,
-      fullscreen: hotkeyResult.fullscreen.ok ? next.hotkeys.fullscreen : prev.hotkeys.fullscreen
+      fullscreen: hotkeyResult.fullscreen.ok ? next.hotkeys.fullscreen : prev.hotkeys.fullscreen,
+      document: hotkeyResult.document.ok ? next.hotkeys.document : prev.hotkeys.document
     }
 
-    if (corrected.region !== next.hotkeys.region || corrected.fullscreen !== next.hotkeys.fullscreen) {
+    if (
+      corrected.region !== next.hotkeys.region ||
+      corrected.fullscreen !== next.hotkeys.fullscreen ||
+      corrected.document !== next.hotkeys.document
+    ) {
       applyHotkeys({ ...next, hotkeys: corrected })
       updateSettings({ hotkeys: corrected })
     }

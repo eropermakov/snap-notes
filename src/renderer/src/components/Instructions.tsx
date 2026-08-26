@@ -10,6 +10,7 @@ export default function Instructions(): ReactElement {
 
   const region = settings?.hotkeys.region ?? 'Control+Shift+S'
   const fullscreen = settings?.hotkeys.fullscreen ?? 'Control+Shift+F'
+  const documentHotkey = settings?.hotkeys.document ?? 'Control+Shift+D'
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -69,15 +70,21 @@ export default function Instructions(): ReactElement {
                 {formatAccelerator(fullscreen)}
               </kbd>
             </div>
+            <div className="flex items-center justify-between rounded-lg bg-bg px-3.5 py-2.5">
+              <span className="text-sm text-ink">Документ из скриншота</span>
+              <kbd className="rounded bg-surface px-2 py-1 font-mono text-xs text-ink shadow-card">
+                {formatAccelerator(documentHotkey)}
+              </kbd>
+            </div>
           </div>
         </section>
 
         <section className="mb-6 rounded-2xl border border-surface-border bg-surface p-5">
           <h2 className="mb-1 text-sm font-semibold text-ink">Документ из скриншота</h2>
           <p className="text-sm text-muted">
-            Кнопка со значком страницы над основной «+» на экране заметок — заскриньте область с текстом и фото, и
-            всё встанет в заметку по порядку: текст как текст, фотографии — вырезанными картинками на своих местах.
-            Работает только с ключом Gemini.
+            Хоткей выше или кнопка со значком страницы над основной «+» на экране заметок — заскриньте область с
+            текстом и фото, и всё встанет в заметку по порядку: текст как текст, фотографии — вырезанными картинками
+            на своих местах. Работает только с ключом Gemini.
           </p>
         </section>
 
