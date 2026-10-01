@@ -142,6 +142,7 @@ src/
 4. `npm run typecheck` — проверить, что всё чисто
 5. `git add -A && git commit -m "..." && git push`
 6. `npm run release` — соберёт и опубликует на GitHub. **Важно:** первый раз после смены `package.json → build.publish` конфига electron-builder иногда создаёт релиз черновиком (draft) — если после `npm run release` релиза не видно на странице https://github.com/eropermakov/snap-notes/releases, проверить через GitHub API (`curl -H "Authorization: token $GH_TOKEN" https://api.github.com/repos/eropermakov/snap-notes/releases`, смотреть поле `"draft"`) и при необходимости запустить `npm run release` ещё раз — на повторном прогоне обычно публикуется как надо.
+   `npm run release` в конце сам запускает `scripts/publish-stable-download.mjs` — добавляет в релиз копию установщика `Snap-Notes-Setup.exe` для постоянной ссылки «Скачать» в README (`releases/latest/download/Snap-Notes-Setup.exe`). Если публикацию перезапускали вручную через `electron-builder`, этот скрипт нужно запустить отдельно.
 7. У уже установленных копий (начиная с 1.1.1) автообновление сработает само в течение максимум 4 часов, либо сразу через кнопку «Проверить обновления» в Настройках.
 
 ## Известные грабли, на которые уже наступали

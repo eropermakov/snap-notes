@@ -15,7 +15,7 @@
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "dist": "npm run build && electron-builder --win",
-    "release": "npm run build && electron-builder --win --publish always"
+    "release": "npm run build && electron-builder --win --publish always && node scripts/publish-stable-download.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
