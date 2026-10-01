@@ -2,60 +2,96 @@
 export default {
   content: ['./src/renderer/index.html', './src/renderer/src/**/*.{js,ts,jsx,tsx}'],
   theme: {
+    // Desktop type scale: body 14, secondary 13, meta 12.
+    fontSize: {
+      '2xs': ['11px', { lineHeight: '14px' }],
+      xs: ['12px', { lineHeight: '16px' }],
+      sm: ['13px', { lineHeight: '18px' }],
+      base: ['14px', { lineHeight: '20px' }],
+      md: ['15px', { lineHeight: '22px' }],
+      lg: ['16px', { lineHeight: '24px' }],
+      xl: ['20px', { lineHeight: '28px' }],
+      '2xl': ['24px', { lineHeight: '32px' }],
+      '3xl': ['28px', { lineHeight: '36px' }]
+    },
+    borderRadius: {
+      none: '0',
+      xs: '4px',
+      sm: '6px',
+      DEFAULT: '8px',
+      md: '8px',
+      lg: '10px',
+      xl: '12px',
+      '2xl': '16px',
+      '3xl': '20px',
+      '4xl': '24px',
+      full: '9999px'
+    },
     extend: {
       colors: {
-        bg: 'var(--color-bg)',
-        surface: 'var(--color-surface)',
-        'surface-border': 'var(--color-surface-border)',
-        ink: 'var(--color-ink)',
-        muted: 'var(--color-muted)',
+        canvas: 'var(--bg-primary)',
+        sidebar: 'var(--bg-secondary)',
+        'surface-1': 'var(--surface-1)',
+        'surface-2': 'var(--surface-2)',
+        hover: 'var(--surface-hover)',
+        active: 'var(--surface-active)',
+        elevated: 'var(--surface-elevated)',
+        line: {
+          DEFAULT: 'var(--border-subtle)',
+          strong: 'var(--border-normal)'
+        },
+        fg: {
+          DEFAULT: 'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          muted: 'var(--text-muted)',
+          disabled: 'var(--text-disabled)'
+        },
         accent: {
-          DEFAULT: 'var(--color-accent)',
-          hover: 'var(--color-accent-hover)',
-          light: 'var(--color-accent-light)'
+          DEFAULT: 'var(--accent)',
+          hover: 'var(--accent-hover)',
+          soft: 'var(--accent-soft)',
+          contrast: 'var(--accent-contrast)'
         },
         success: {
-          DEFAULT: 'var(--color-success)',
-          light: 'var(--color-success-light)'
+          DEFAULT: 'var(--success)',
+          soft: 'var(--success-soft)'
         },
         warning: {
-          DEFAULT: 'var(--color-warning)',
-          light: 'var(--color-warning-light)'
+          DEFAULT: 'var(--warning)',
+          soft: 'var(--warning-soft)'
         },
         danger: {
-          DEFAULT: 'var(--color-danger)',
-          light: 'var(--color-danger-light)'
+          DEFAULT: 'var(--danger)',
+          hover: 'var(--danger-hover)',
+          soft: 'var(--danger-soft)'
         }
       },
       fontFamily: {
-        sans: ['"Segoe UI Variable"', 'Inter', 'system-ui', 'sans-serif']
+        sans: ['"Segoe UI Variable Text"', '"Segoe UI"', 'Inter', 'system-ui', 'sans-serif'],
+        mono: ['"Cascadia Mono"', 'Consolas', 'ui-monospace', 'monospace']
       },
       boxShadow: {
-        card: '0 1px 2px rgba(0, 0, 0, 0.05)',
-        'card-hover': '0 8px 24px rgba(0, 0, 0, 0.14)',
-        fab: '0 6px 16px var(--color-accent-shadow)'
+        popover: 'var(--shadow-popover)',
+        modal: 'var(--shadow-modal)',
+        toast: 'var(--shadow-popover)',
+        focus: '0 0 0 3px var(--focus-ring)'
+      },
+      transitionDuration: {
+        fast: '120ms',
+        base: '150ms',
+        slow: '200ms'
+      },
+      transitionTimingFunction: {
+        out: 'cubic-bezier(0.23, 1, 0.32, 1)'
       },
       keyframes: {
         shimmer: {
           '0%': { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' }
-        },
-        'pulse-fab': {
-          '0%, 100%': { boxShadow: '0 6px 16px var(--color-accent-shadow)' },
-          '50%': { boxShadow: '0 6px 28px var(--color-accent-shadow-strong)' }
-        },
-        'pop-in': {
-          '0%': { opacity: '0', transform: 'scale(0.95) translateY(-4px)' },
-          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' }
         }
       },
       animation: {
-        shimmer: 'shimmer 1.6s infinite linear',
-        'pulse-fab': 'pulse-fab 2s infinite ease-in-out',
-        'pop-in': 'pop-in 160ms cubic-bezier(0.23, 1, 0.32, 1)'
-      },
-      transitionTimingFunction: {
-        out: 'cubic-bezier(0.23, 1, 0.32, 1)'
+        shimmer: 'shimmer 1.6s infinite linear'
       }
     }
   },

@@ -4,7 +4,8 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // jose (used by the vendored Sign in with ChatGPT SDK) is ESM-only: bundle it instead of require()-ing it.
+    plugins: [externalizeDepsPlugin({ exclude: ['jose'] })],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')

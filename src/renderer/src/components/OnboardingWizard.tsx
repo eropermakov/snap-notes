@@ -1,118 +1,118 @@
 import { useState, type ReactElement } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import type { AiKeyEntry } from '@shared/types'
 import { useAppStore } from '../store/useAppStore'
-import AiKeysManager from './AiKeysManager'
+import ProviderCard from './ai/ProviderCard'
 import ThemePicker from './ThemePicker'
 import HotkeyRecorder from './HotkeyRecorder'
-import Switch from './Switch'
-import { SparkleIcon } from './icons'
+import { Button, EASE_OUT, Modal, SettingsGroup, SettingsRow, Toggle, cn } from '../ui'
 
 const STEPS = ['welcome', 'apiKey', 'theme', 'hotkeys', 'autostart', 'done'] as const
 type Step = (typeof STEPS)[number]
 
-export default function OnboardingWizard(): ReactElement {
+const TITLES: Record<Step, { title: string; description: string }> = {
+  welcome: {
+    title: 'Добро пожаловать в Snap Notes',
+    description:
+      'Заметки с суперспособностью: выделите любой текст на экране хоткеем — приложение распознает и аккуратно причешет его прямо в заметке.'
+  },
+  apiKey: {
+    title: 'ИИ для распознавания',
+    description:
+      'Без облачного ИИ текст распознаётся локально (Tesseract), но без таблиц и структуры. Подключите ChatGPT (если у вас есть план) или бесплатный ключ Gemini — остальные источники можно добавить позже.'
+  },
+  theme: { title: 'Оформление', description: 'Можно поменять в любой момент в настройках.' },
+  hotkeys: { title: 'Хоткеи', description: 'Можно оставить по умолчанию или назначить свои.' },
+  autostart: { title: 'Автозапуск', description: 'Это можно изменить позже в настройках.' },
+  done: { title: 'Готово', description: 'Все параметры можно в любой момент изменить в настройках.' }
+}
+
+export default function OnboardingWizard({ open }: { open: boolean }): ReactElement {
   const settings = useAppStore((s) => s.settings)
   const updateSettings = useAppStore((s) => s.updateSettings)
   const completeOnboarding = useAppStore((s) => s.completeOnboarding)
+  const providers = useAppStore((s) => s.providers)
 
   const [stepIndex, setStepIndex] = useState(0)
-  const [aiKeysDraft, setAiKeysDraft] = useState<AiKeyEntry[]>(settings?.aiKeys ?? [])
   const [hotkeyErrors, setHotkeyErrors] = useState<{ region?: string; fullscreen?: string }>({})
-
-  if (!settings) return <div />
 
   const step: Step = STEPS[stepIndex]
 
-  const goNext = async (): Promise<void> => {
-    if (step === 'apiKey' && JSON.stringify(aiKeysDraft) !== JSON.stringify(settings.aiKeys)) {
-      await updateSettings({ aiKeys: aiKeysDraft })
-    }
-    if (stepIndex < STEPS.length - 1) setStepIndex((i) => i + 1)
-  }
-
-  const goBack = (): void => {
-    if (stepIndex > 0) setStepIndex((i) => i - 1)
-  }
-
   const handleHotkeyChange = async (kind: 'region' | 'fullscreen', accelerator: string): Promise<void> => {
-    const nextHotkeys = { ...settings.hotkeys, [kind]: accelerator }
-    const result = await updateSettings({ hotkeys: nextHotkeys })
-    if (result) {
-      setHotkeyErrors({ region: result.region.error, fullscreen: result.fullscreen.error })
-    }
+    if (!settings) return
+    const result = await updateSettings({ hotkeys: { ...settings.hotkeys, [kind]: accelerator } })
+    if (result) setHotkeyErrors({ region: result.region.error, fullscreen: result.fullscreen.error })
   }
 
   return (
-    <motion.div
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-ink/40 p-6 backdrop-blur-sm"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-        className="flex w-full max-w-lg flex-col rounded-2xl border border-surface-border bg-surface p-7 shadow-card-hover"
-      >
-        <div className="mb-6 flex items-center justify-center gap-2">
-          {STEPS.map((s, i) => (
-            <span
-              key={s}
-              className={`h-1.5 rounded-full transition-all ${
-                i === stepIndex ? 'w-6 bg-accent' : i < stepIndex ? 'w-1.5 bg-accent/50' : 'w-1.5 bg-surface-border'
-              }`}
-            />
-          ))}
+    <Modal
+      open={open && Boolean(settings)}
+      onClose={() => undefined}
+      dismissable={false}
+      size="lg"
+      layer="top"
+      footer={
+        <div className="flex w-full items-center justify-between">
+          <div className="flex items-center gap-1.5" aria-label={`Шаг ${stepIndex + 1} из ${STEPS.length}`}>
+            {STEPS.map((s, i) => (
+              <span
+                key={s}
+                className={cn('h-1.5 rounded-full transition-all duration-slow', i === stepIndex ? 'w-5 bg-fg' : i < stepIndex ? 'w-1.5 bg-fg-muted' : 'w-1.5 bg-[var(--border-normal)]')}
+              />
+            ))}
+          </div>
+          <div className="flex gap-2">
+            {stepIndex > 0 && (
+              <Button variant="ghost" onClick={() => setStepIndex((i) => i - 1)}>
+                Назад
+              </Button>
+            )}
+            {step === 'done' ? (
+              <Button variant="primary" onClick={() => void completeOnboarding()}>
+                Начать пользоваться
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={() => setStepIndex((i) => i + 1)}>
+                Далее
+              </Button>
+            )}
+          </div>
         </div>
-
-        <AnimatePresence mode="wait">
+      }
+    >
+      {settings && (
+        <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={step}
-            initial={{ opacity: 0, x: 12 }}
+            initial={{ opacity: 0, x: 8 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -12 }}
-            transition={{ duration: 0.2 }}
-            className="min-h-[240px]"
+            exit={{ opacity: 0, x: -8 }}
+            transition={{ duration: 0.16, ease: EASE_OUT }}
+            className="min-h-[180px] pt-2"
           >
-            {step === 'welcome' && (
-              <div className="flex flex-col items-center text-center">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent-light text-accent">
-                  <SparkleIcon className="h-8 w-8" />
+            <h2 className={cn('font-semibold text-fg', step === 'welcome' || step === 'done' ? 'text-3xl tracking-[-0.01em]' : 'text-xl')}>
+              {TITLES[step].title}
+            </h2>
+            <p className="mt-2 text-base text-fg-secondary">{TITLES[step].description}</p>
+
+            <div className="mt-5">
+              {step === 'apiKey' && (
+                <div className="max-h-[320px] divide-y divide-line overflow-y-auto border-y border-line">
+                  {providers
+                    .filter((p) => (p.id === 'chatgpt' && p.integrationEnabled) || p.id === 'gemini')
+                    .map((provider) => (
+                      <ProviderCard key={provider.id} provider={provider} defaultOpen />
+                    ))}
                 </div>
-                <h2 className="mb-2 text-xl font-semibold text-ink">Добро пожаловать в Snap Notes</h2>
-                <p className="text-sm text-muted">
-                  Заметки в стиле Google Docs с суперспособностью: выделите любой текст на экране хоткеем — приложение
-                  распознает и аккуратно причешет его прямо в заметке.
-                </p>
-              </div>
-            )}
+              )}
 
-            {step === 'apiKey' && (
-              <div>
-                <h2 className="mb-1 text-lg font-semibold text-ink">API-ключи</h2>
-                <p className="mb-4 text-sm text-muted">
-                  Без хотя бы одного ключа распознавание текста работать не будет. Ключи бесплатные.
-                </p>
-                <AiKeysManager keys={aiKeysDraft} usage={{}} onChange={setAiKeysDraft} />
-              </div>
-            )}
+              {step === 'theme' && (
+                <SettingsGroup>
+                  <ThemePicker value={settings.theme} onChange={(theme) => void updateSettings({ theme })} />
+                </SettingsGroup>
+              )}
 
-            {step === 'theme' && (
-              <div>
-                <h2 className="mb-1 text-lg font-semibold text-ink">Тема оформления</h2>
-                <p className="mb-3 text-sm text-muted">Можно поменять в любой момент в настройках.</p>
-                <ThemePicker value={settings.theme} onChange={(theme) => void updateSettings({ theme })} />
-              </div>
-            )}
-
-            {step === 'hotkeys' && (
-              <div>
-                <h2 className="mb-1 text-lg font-semibold text-ink">Хоткеи</h2>
-                <p className="mb-2 text-sm text-muted">Можно оставить по умолчанию или назначить свои.</p>
-                <div className="divide-y divide-surface-border">
+              {step === 'hotkeys' && (
+                <SettingsGroup>
                   <HotkeyRecorder
                     label="Скриншот области экрана"
                     value={settings.hotkeys.region}
@@ -125,59 +125,27 @@ export default function OnboardingWizard(): ReactElement {
                     error={hotkeyErrors.fullscreen}
                     onChange={(acc) => void handleHotkeyChange('fullscreen', acc)}
                   />
-                </div>
-              </div>
-            )}
+                </SettingsGroup>
+              )}
 
-            {step === 'autostart' && (
-              <div>
-                <h2 className="mb-1 text-lg font-semibold text-ink">Запускать при старте Windows?</h2>
-                <p className="mb-2 text-sm text-muted">Это можно изменить позже в настройках.</p>
-                <Switch
-                  label="Запускать при старте Windows"
-                  checked={settings.launchAtStartup}
-                  onChange={(checked) => void updateSettings({ launchAtStartup: checked })}
-                />
-              </div>
-            )}
-
-            {step === 'done' && (
-              <div className="flex flex-col items-center text-center">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success-light text-success">
-                  <SparkleIcon className="h-8 w-8" />
-                </div>
-                <h2 className="mb-2 text-xl font-semibold text-ink">Готово!</h2>
-                <p className="text-sm text-muted">Все параметры можно в любой момент изменить в настройках.</p>
-              </div>
-            )}
+              {step === 'autostart' && (
+                <SettingsGroup>
+                  <SettingsRow
+                    title="Запускать при старте Windows"
+                    control={
+                      <Toggle
+                        aria-label="Запускать при старте Windows"
+                        checked={settings.launchAtStartup}
+                        onChange={(checked) => void updateSettings({ launchAtStartup: checked })}
+                      />
+                    }
+                  />
+                </SettingsGroup>
+              )}
+            </div>
           </motion.div>
         </AnimatePresence>
-
-        <div className="mt-6 flex justify-between">
-          <button
-            onClick={goBack}
-            disabled={stepIndex === 0}
-            className="rounded-full px-4 py-2 text-sm font-medium text-ink transition hover:bg-bg active:scale-[0.97] disabled:opacity-0 disabled:active:scale-100"
-          >
-            Назад
-          </button>
-          {step === 'done' ? (
-            <button
-              onClick={() => void completeOnboarding()}
-              className="rounded-full bg-accent px-6 py-2 text-sm font-medium text-white transition hover:bg-accent-hover active:scale-[0.97]"
-            >
-              Начать пользоваться
-            </button>
-          ) : (
-            <button
-              onClick={() => void goNext()}
-              className="rounded-full bg-accent px-6 py-2 text-sm font-medium text-white transition hover:bg-accent-hover active:scale-[0.97]"
-            >
-              Далее
-            </button>
-          )}
-        </div>
-      </motion.div>
-    </motion.div>
+      )}
+    </Modal>
   )
 }

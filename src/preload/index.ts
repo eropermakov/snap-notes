@@ -1,8 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IPC } from '../shared/ipc'
+import type { ActivitySummary, AiSettings, ApiKeyProviderId, ProviderId, ProviderPublicState } from '../shared/providers'
+import type { HudAction, HudState } from '../shared/hud'
 import type {
-  AiProvider,
   ApiKeyTestResult,
   AppSettings,
   ExportResult,
@@ -23,6 +24,14 @@ interface ResetAllResponse {
   ok: boolean
   hotkeyResult: HotkeyRegistrationResult | null
 }
+
+interface ActionResult {
+  ok: boolean
+  message?: string
+  saved?: boolean
+}
+
+type SettingsPatch = Omit<Partial<AppSettings>, 'ai' | 'aiKeys' | 'providerKeys'> & { ai?: Partial<AiSettings> }
 
 interface OpenFolderResponse {
   ok: boolean
@@ -78,22 +87,70 @@ const api = {
     listTrash: (): Promise<Note[]> => ipcRenderer.invoke(IPC.NOTES_LIST_TRASH),
     restore: (id: string): Promise<Note | null> => ipcRenderer.invoke(IPC.NOTES_RESTORE, id),
     permanentDelete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC.NOTES_PERMANENT_DELETE, id),
-    emptyTrash: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(IPC.NOTES_EMPTY_TRASH)
+    emptyTrash: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(IPC.NOTES_EMPTY_TRASH),
+    /** 'ai' = clean Markdown for chats; 'rich' = HTML for Word/Docs + plain text. */
+    copy: (id: string, format: 'ai' | 'markdown' | 'plain' | 'rich'): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke(IPC.NOTES_COPY, id, format),
+    export: (id: string, format: 'txt' | 'md' | 'pdf' | 'docx'): Promise<ExportResult> =>
+      ipcRenderer.invoke(IPC.NOTES_EXPORT, id, format),
+    /** "Проверить распознавание": replaces one capture's blocks with corrected HTML. */
+    replaceSourceHtml: (id: string, sourceId: string, html: string): Promise<Note | null> =>
+      ipcRenderer.invoke(IPC.NOTES_REPLACE_SOURCE_HTML, id, sourceId, html),
+    /** A capture was appended to a note; the editor may move it to the caret. */
+    onCaptureAdded: (cb: (payload: { noteId: string; sourceId: string }) => void): Unsubscribe => {
+      const listener = (_e: unknown, payload: { noteId: string; sourceId: string }): void => cb(payload)
+      ipcRenderer.on(IPC.ON_CAPTURE_ADDED, listener)
+      return () => ipcRenderer.removeListener(IPC.ON_CAPTURE_ADDED, listener)
+    },
+    /** Undo one capture: removes its blocks, metadata and original screenshot. */
+    removeSource: (id: string, sourceId: string): Promise<Note | null> => ipcRenderer.invoke(IPC.NOTES_REMOVE_SOURCE, id, sourceId),
+    /** "Привести в порядок" for one captured fragment: fixes OCR, keeps the meaning. */
+    tidySource: (id: string, sourceId: string): Promise<{ ok: boolean; message?: string; provider?: string }> =>
+      ipcRenderer.invoke(IPC.NOTES_TIDY_SOURCE, id, sourceId),
+    /** Explicit AI action on a fragment; 'explain'/'keypoints' add after it, others replace it. */
+    aiAction: (
+      id: string,
+      sourceId: string,
+      action: 'shorten' | 'explain' | 'rewrite' | 'translate' | 'list' | 'keypoints',
+      language?: string
+    ): Promise<{ ok: boolean; message?: string; provider?: string }> =>
+      ipcRenderer.invoke(IPC.NOTES_AI_ACTION, id, sourceId, action, language)
   },
   settings: {
     get: (): Promise<AppSettings> => ipcRenderer.invoke(IPC.SETTINGS_GET),
-    update: (patch: Partial<AppSettings>): Promise<SettingsUpdateResponse> =>
-      ipcRenderer.invoke(IPC.SETTINGS_UPDATE, patch),
-    testApiKey: (provider: AiProvider, apiKey: string): Promise<ApiKeyTestResult> =>
-      ipcRenderer.invoke(IPC.SETTINGS_TEST_API_KEY, provider, apiKey),
+    update: (patch: SettingsPatch): Promise<SettingsUpdateResponse> => ipcRenderer.invoke(IPC.SETTINGS_UPDATE, patch),
     getDataPath: (): Promise<string> => ipcRenderer.invoke(IPC.SETTINGS_GET_DATA_PATH),
     openDataFolder: (): Promise<OpenFolderResponse> => ipcRenderer.invoke(IPC.SETTINGS_OPEN_DATA_FOLDER),
     exportNotes: (): Promise<ExportResult> => ipcRenderer.invoke(IPC.SETTINGS_EXPORT_NOTES),
     exportNotesDocx: (): Promise<ExportResult> => ipcRenderer.invoke(IPC.SETTINGS_EXPORT_NOTES_DOCX),
     resetAll: (): Promise<ResetAllResponse> => ipcRenderer.invoke(IPC.SETTINGS_RESET_ALL),
     getStorageStats: (): Promise<StorageStats> => ipcRenderer.invoke(IPC.SETTINGS_GET_STORAGE_STATS),
-    getUsage: (): Promise<Record<string, number>> => ipcRenderer.invoke(IPC.SETTINGS_GET_USAGE),
     clearScreenshotCache: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(IPC.SETTINGS_CLEAR_SCREENSHOT_CACHE)
+  },
+  providers: {
+    list: (): Promise<ProviderPublicState[]> => ipcRenderer.invoke(IPC.PROVIDERS_LIST),
+    /** The key is sent to the main process once; it is never returned to the renderer. */
+    setKey: (provider: ApiKeyProviderId, input: { apiKey: string; keyId?: string; label?: string }): Promise<ActionResult> =>
+      ipcRenderer.invoke(IPC.PROVIDERS_SET_KEY, provider, input),
+    renameKey: (provider: ApiKeyProviderId, keyId: string, label: string): Promise<ActionResult> =>
+      ipcRenderer.invoke(IPC.PROVIDERS_RENAME_KEY, provider, keyId, label),
+    removeKey: (provider: ApiKeyProviderId, keyId: string): Promise<ActionResult> =>
+      ipcRenderer.invoke(IPC.PROVIDERS_REMOVE_KEY, provider, keyId),
+    test: (provider: ProviderId): Promise<ApiKeyTestResult> => ipcRenderer.invoke(IPC.PROVIDERS_TEST, provider),
+    connect: (provider: ProviderId, options?: { reconsent?: boolean }): Promise<ActionResult> =>
+      ipcRenderer.invoke(IPC.PROVIDERS_CONNECT, provider, options),
+    cancelConnect: (provider: ProviderId): Promise<ActionResult> => ipcRenderer.invoke(IPC.PROVIDERS_CANCEL_CONNECT, provider),
+    disconnect: (provider: ProviderId): Promise<ActionResult> => ipcRenderer.invoke(IPC.PROVIDERS_DISCONNECT, provider),
+    refreshModels: (provider: ProviderId): Promise<ActionResult> => ipcRenderer.invoke(IPC.PROVIDERS_REFRESH_MODELS, provider),
+    refreshUsage: (provider?: ProviderId): Promise<ActionResult> => ipcRenderer.invoke(IPC.PROVIDERS_REFRESH_USAGE, provider),
+    openManageUsage: (provider: ProviderId): Promise<ActionResult> =>
+      ipcRenderer.invoke(IPC.PROVIDERS_OPEN_MANAGE_USAGE, provider),
+    activitySummary: (): Promise<ActivitySummary> => ipcRenderer.invoke(IPC.ACTIVITY_SUMMARY),
+    onChanged: (cb: (states: ProviderPublicState[]) => void): Unsubscribe => {
+      const listener = (_e: unknown, states: ProviderPublicState[]): void => cb(states)
+      ipcRenderer.on(IPC.ON_PROVIDERS_CHANGED, listener)
+      return () => ipcRenderer.removeListener(IPC.ON_PROVIDERS_CHANGED, listener)
+    }
   },
   app: {
     getVersion: (): Promise<string> => ipcRenderer.invoke(IPC.APP_GET_VERSION),
@@ -134,7 +191,23 @@ const api = {
       return () => ipcRenderer.removeListener(IPC.OVERLAY_IMAGE, listener)
     },
     selectRegion: (rect: OverlayRect): Promise<void> => ipcRenderer.invoke(IPC.OVERLAY_SELECTION, rect),
-    cancel: (): Promise<void> => ipcRenderer.invoke(IPC.OVERLAY_CANCEL)
+    cancel: (): Promise<void> => ipcRenderer.invoke(IPC.OVERLAY_CANCEL),
+    onMode: (cb: (mode: { session?: { count: number } }) => void): Unsubscribe => {
+      const listener = (_e: unknown, mode: { session?: { count: number } }): void => cb(mode ?? {})
+      ipcRenderer.on(IPC.OVERLAY_MODE, listener)
+      return () => ipcRenderer.removeListener(IPC.OVERLAY_MODE, listener)
+    },
+    /** Enter / Esc during a Capture Session. */
+    finishSession: (): void => ipcRenderer.send(IPC.OVERLAY_FINISH_SESSION)
+  },
+  hud: {
+    ready: (): void => ipcRenderer.send(IPC.HUD_READY),
+    onState: (cb: (state: HudState) => void): Unsubscribe => {
+      const listener = (_e: unknown, state: HudState): void => cb(state)
+      ipcRenderer.on(IPC.HUD_STATE, listener)
+      return () => ipcRenderer.removeListener(IPC.HUD_STATE, listener)
+    },
+    action: (action: HudAction): void => ipcRenderer.send(IPC.HUD_ACTION, action)
   }
 }
 

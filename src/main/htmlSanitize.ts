@@ -2,6 +2,9 @@ import sanitizeHtml from 'sanitize-html'
 
 const ALLOWED_COLORS = /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*[0-9.]+\s*\))$/
 
+/** Block ids and OCR source links (see src/shared/blocks.ts) — must survive editor round trips. */
+const BLOCK_ATTRS = ['data-block', 'data-src']
+
 export function sanitizeNoteHtml(html: string): string {
   if (!html) return ''
   return sanitizeHtml(html, {
@@ -15,9 +18,20 @@ export function sanitizeNoteHtml(html: string): string {
       'u',
       's',
       'strike',
+      'del',
+      'mark',
+      'sub',
+      'sup',
+      'code',
+      'pre',
+      'blockquote',
+      'a',
       'span',
       'div',
+      'h1',
+      'h2',
       'h3',
+      'h4',
       'ul',
       'ol',
       'li',
@@ -30,16 +44,26 @@ export function sanitizeNoteHtml(html: string): string {
       'img'
     ],
     allowedAttributes: {
-      span: ['style', 'class'],
-      p: ['class'],
-      ul: ['class'],
+      span: ['style', 'class', 'data-conf', 'data-bbox'],
+      p: ['class', ...BLOCK_ATTRS],
+      div: BLOCK_ATTRS,
+      h1: BLOCK_ATTRS,
+      h2: BLOCK_ATTRS,
+      h3: BLOCK_ATTRS,
+      h4: BLOCK_ATTRS,
+      blockquote: BLOCK_ATTRS,
+      pre: ['data-lang', ...BLOCK_ATTRS],
+      ul: ['class', ...BLOCK_ATTRS],
+      ol: ['start', ...BLOCK_ATTRS],
       li: ['class'],
+      table: BLOCK_ATTRS,
       td: ['colspan', 'rowspan'],
       th: ['colspan', 'rowspan'],
-      img: ['src', 'class', 'alt']
+      img: ['src', 'class', 'alt', ...BLOCK_ATTRS],
+      a: ['href']
     },
     allowedClasses: {
-      span: ['ui-chip'],
+      span: ['ui-chip', 'ocr-uncertain'],
       p: ['ocr-flag'],
       ul: ['todo-list'],
       li: ['todo-item', 'done'],
@@ -52,9 +76,11 @@ export function sanitizeNoteHtml(html: string): string {
       }
     },
     disallowedTagsMode: 'discard',
-    allowedSchemes: [],
+    allowedSchemes: ['http', 'https', 'mailto', 'tel'],
     allowedSchemesByTag: {
-      img: ['snap-media']
-    }
+      img: ['snap-media'],
+      a: ['http', 'https', 'mailto', 'tel']
+    },
+    allowProtocolRelative: false
   })
 }

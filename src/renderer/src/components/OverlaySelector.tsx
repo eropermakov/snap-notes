@@ -8,17 +8,33 @@ export default function OverlaySelector(): ReactElement {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [start, setStart] = useState<Point | null>(null)
   const [current, setCurrent] = useState<Point | null>(null)
+  const [session, setSession] = useState<{ count: number } | null>(null)
   const draggingRef = useRef(false)
+  const sessionRef = useRef<{ count: number } | null>(null)
 
   useEffect(() => {
-    const unsubscribe = window.api.overlay.onImage((dataUrl) => setImageUrl(dataUrl))
+    const offImage = window.api.overlay.onImage((dataUrl) => {
+      setImageUrl(dataUrl)
+      setStart(null)
+      setCurrent(null)
+    })
+    // Sent right before each image: whether a Capture Session is running (§13).
+    const offMode = window.api.overlay.onMode((mode) => {
+      sessionRef.current = mode.session ?? null
+      setSession(mode.session ?? null)
+    })
     window.api.overlay.ready()
-    return unsubscribe
+    return () => {
+      offImage()
+      offMode()
+    }
   }, [])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' || (e.key === 'Enter' && sessionRef.current)) {
+        // During a Capture Session, Enter and Esc finish the session.
+        if (sessionRef.current) window.api.overlay.finishSession()
         void window.api.overlay.cancel()
       }
     }
@@ -95,15 +111,17 @@ export default function OverlaySelector(): ReactElement {
             boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)'
           }}
         >
-          <span className="absolute -top-7 left-0 whitespace-nowrap rounded bg-ink/80 px-2 py-0.5 font-mono text-xs text-white">
+          <span className="absolute -top-7 left-0 whitespace-nowrap rounded bg-black/75 px-2 py-0.5 font-mono text-xs text-white">
             {rect.width} × {rect.height}
           </span>
         </div>
       )}
 
       {!rect && (
-        <div className="pointer-events-none absolute left-1/2 top-8 -translate-x-1/2 rounded-full bg-ink/70 px-4 py-2 text-sm text-white">
-          Выделите область — Esc для отмены
+        <div className="pointer-events-none absolute left-1/2 top-8 -translate-x-1/2 rounded-full bg-black/70 px-4 py-2 text-base text-white">
+          {session
+            ? `Сессия захвата · фрагментов: ${session.count} — выделите следующий. Enter или Esc — завершить`
+            : 'Выделите область — Esc для отмены'}
         </div>
       )}
     </div>

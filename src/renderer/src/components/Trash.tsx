@@ -1,94 +1,89 @@
 import { useMemo, useState, type ReactElement } from 'react'
 import type { Note } from '@shared/types'
-import { htmlToPlainText } from '@shared/htmlText'
 import { useAppStore } from '../store/useAppStore'
-import ConfirmModal from './ConfirmModal'
-import { ChevronLeftIcon, RestoreIcon, TrashIcon } from './icons'
+import { ConfirmDialog, EmptyState, IconButton, Menu, MenuItem, MenuSeparator, useContextMenu } from '../ui'
+import { RestoreIcon, TrashIcon } from './icons'
+import { matchesQuery, noteLabel, notePreview } from './notes/noteFilters'
+import { formatNoteDate, pluralRu } from '../utils/format'
 
+const DAY = 86_400_000
+
+/** Trash list. "Empty trash" lives in the workspace header (see NotesWorkspace). */
 export default function Trash(): ReactElement {
   const trashNotes = useAppStore((s) => s.trashNotes)
-  const backToNotes = useAppStore((s) => s.backToNotes)
-  const restoreNote = useAppStore((s) => s.restoreNote)
-  const permanentDelete = useAppStore((s) => s.permanentDelete)
-  const emptyTrash = useAppStore((s) => s.emptyTrash)
-  const [emptyConfirmOpen, setEmptyConfirmOpen] = useState(false)
+  const searchQuery = useAppStore((s) => s.searchQuery)
+  const retentionDays = useAppStore((s) => s.settings?.trashRetentionDays ?? 30)
+
+  const visible = useMemo(
+    () => trashNotes.filter((n) => matchesQuery(n, searchQuery)).sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)),
+    [trashNotes, searchQuery]
+  )
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-2xl px-6 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={backToNotes} className="rounded-full p-2 text-muted transition hover:bg-surface active:scale-[0.97]" title="Назад">
-              <ChevronLeftIcon className="h-5 w-5" />
-            </button>
-            <h1 className="text-xl font-semibold text-ink">Корзина</h1>
-          </div>
-          {trashNotes.length > 0 && (
-            <button
-              onClick={() => setEmptyConfirmOpen(true)}
-              className="rounded-lg border border-danger/40 bg-surface px-3.5 py-2 text-sm font-medium text-danger transition hover:bg-danger-light active:scale-[0.97]"
-            >
-              Очистить корзину
-            </button>
-          )}
-        </div>
-
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-[880px] px-6 pb-12">
         {trashNotes.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-surface-border p-8 text-center text-sm text-muted">
-            Корзина пуста
-          </p>
+          <EmptyState
+            size="sm"
+            title="Корзина пуста"
+            description={`Удалённые заметки хранятся здесь ${retentionDays} ${pluralRu(retentionDays, 'день', 'дня', 'дней')}, потом удаляются автоматически.`}
+          />
+        ) : visible.length === 0 ? (
+          <EmptyState size="sm" title="Ничего не найдено" description="В корзине нет заметок по этому запросу." />
         ) : (
-          <div className="space-y-2">
-            {trashNotes.map((note) => (
-              <TrashRow key={note.id} note={note} onRestore={() => void restoreNote(note.id)} onDelete={() => void permanentDelete(note.id)} />
+          <div className="-mx-4 flex flex-col gap-px">
+            {visible.map((note) => (
+              <TrashRow key={note.id} note={note} retentionDays={retentionDays} />
             ))}
           </div>
         )}
       </div>
-
-      <ConfirmModal
-        open={emptyConfirmOpen}
-        title="Очистить корзину?"
-        description="Все заметки в корзине будут удалены безвозвратно."
-        confirmLabel="Очистить"
-        danger
-        onCancel={() => setEmptyConfirmOpen(false)}
-        onConfirm={() => {
-          setEmptyConfirmOpen(false)
-          void emptyTrash()
-        }}
-      />
     </div>
   )
 }
 
-function TrashRow({ note, onRestore, onDelete }: { note: Note; onRestore: () => void; onDelete: () => void }): ReactElement {
+function TrashRow({ note, retentionDays }: { note: Note; retentionDays: number }): ReactElement {
+  const restoreNote = useAppStore((s) => s.restoreNote)
+  const permanentDelete = useAppStore((s) => s.permanentDelete)
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const preview = useMemo(() => htmlToPlainText(note.body).slice(0, 140), [note.body])
-  const deletedDate = note.deletedAt ? new Date(note.deletedAt).toLocaleDateString('ru-RU') : ''
+  const { onContextMenu, menu } = useContextMenu()
+  const preview = useMemo(() => notePreview(note.body).slice(0, 160), [note.body])
+
+  const deletedAt = note.deletedAt ?? Date.now()
+  const daysLeft = Math.max(0, retentionDays - Math.floor((Date.now() - deletedAt) / DAY))
 
   return (
     <>
-      <div className="flex items-start justify-between gap-3 rounded-xl border border-surface-border bg-surface p-3.5">
+      <div onContextMenu={onContextMenu} className="group flex items-center gap-4 rounded-xl px-4 py-2.5 transition-colors duration-fast hover:bg-hover focus-within:bg-hover">
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium text-ink">
-            {note.emoji ? `${note.emoji} ` : ''}
-            {note.title || 'Без названия'}
+          <p className="truncate text-base font-medium text-fg">
+            {note.emoji && <span className="mr-1.5">{note.emoji}</span>}
+            {noteLabel(note)}
           </p>
-          {preview && <p className="mt-0.5 line-clamp-2 text-sm text-muted">{preview}</p>}
-          <p className="mt-1 text-xs text-muted">Удалено {deletedDate}</p>
+          {note.title.trim() && preview && <p className="mt-0.5 truncate text-sm text-fg-secondary">{preview}</p>}
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <button onClick={onRestore} className="rounded-full p-2 text-muted transition hover:bg-accent-light hover:text-accent active:scale-[0.97]" title="Восстановить">
-            <RestoreIcon className="h-4 w-4" />
-          </button>
-          <button onClick={() => setConfirmOpen(true)} className="rounded-full p-2 text-muted transition hover:bg-danger-light hover:text-danger active:scale-[0.97]" title="Удалить навсегда">
-            <TrashIcon className="h-4 w-4" />
-          </button>
+        <div className="relative flex shrink-0 items-center">
+          <span className="text-xs text-fg-muted transition-opacity duration-fast group-focus-within:opacity-0 group-hover:opacity-0">
+            Удалено {formatNoteDate(deletedAt)} · {daysLeft === 0 ? 'удалится сегодня' : `ещё ${daysLeft} ${pluralRu(daysLeft, 'день', 'дня', 'дней')}`}
+          </span>
+          <div className="absolute right-0 flex items-center gap-0.5 opacity-0 transition-opacity duration-fast group-focus-within:opacity-100 group-hover:opacity-100">
+            <IconButton size="sm" label="Восстановить" icon={<RestoreIcon />} onClick={() => void restoreNote(note.id)} />
+            <IconButton size="sm" tone="danger" label="Удалить навсегда" icon={<TrashIcon />} onClick={() => setConfirmOpen(true)} />
+          </div>
         </div>
       </div>
 
-      <ConfirmModal
+      <Menu {...menu} aria-label="Действия с заметкой">
+        <MenuItem icon={<RestoreIcon />} onSelect={() => void restoreNote(note.id)}>
+          Восстановить
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem icon={<TrashIcon />} danger onSelect={() => setConfirmOpen(true)}>
+          Удалить навсегда
+        </MenuItem>
+      </Menu>
+
+      <ConfirmDialog
         open={confirmOpen}
         title="Удалить навсегда?"
         description="Заметку нельзя будет восстановить."
@@ -97,7 +92,7 @@ function TrashRow({ note, onRestore, onDelete }: { note: Note; onRestore: () => 
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => {
           setConfirmOpen(false)
-          onDelete()
+          void permanentDelete(note.id)
         }}
       />
     </>

@@ -1,18 +1,23 @@
 import { BrowserWindow } from 'electron'
-import { randomUUID } from 'crypto'
 import { IPC } from '../shared/ipc'
 import * as notesStore from './notesStore'
 import * as settingsStore from './settingsStore'
 import { captureRegionAtCursor } from './screenshot'
-import { AiError } from './ai/errors'
-import { buildDocumentNoteBody } from './documentBuilder'
-import { ToastPayload } from '../shared/types'
+import { formatRoutingNotice } from '../shared/usageFormat'
+import type { RecognitionService } from './providers/recognition'
+import { noteTitle, recognitionErrorMessage, setActiveNoteId, withCompletenessFlag } from './capturePipeline'
+import * as hud from './hud'
+import { generateTitle, recognizeCapture } from './captureContent'
+import { readForegroundWindow } from './windowInfo'
+import { logEvent } from './logger'
 
 let capturing = false
 let getWin: (() => BrowserWindow | null) | null = null
+let recognition: RecognitionService | null = null
 
-export function initDocumentCapture(getMainWindow: () => BrowserWindow | null): void {
+export function initDocumentCapture(getMainWindow: () => BrowserWindow | null, service: RecognitionService): void {
   getWin = getMainWindow
+  recognition = service
 }
 
 function broadcast(channel: string, payload?: unknown): void {
@@ -22,54 +27,59 @@ function broadcast(channel: string, payload?: unknown): void {
   }
 }
 
-function toast(type: ToastPayload['type'], message: string): void {
-  const win = getWin?.() ?? null
-  if (!win || win.isDestroyed()) return
-  const payload: ToastPayload = { id: randomUUID(), type, message }
-  win.webContents.send(IPC.ON_TOAST, payload)
-}
-
+/**
+ * Capture to New Note (§12), on the former "Документ из скриншота" hotkey: select a region →
+ * recognize text, structure and photos → new note → short title. The AI may name the note but the
+ * recognized content is added exactly as recognized.
+ */
 export async function runDocumentCapture(preloadPath: string): Promise<void> {
   if (capturing) return
   capturing = true
+  const windowInfo = readForegroundWindow()
 
   try {
     const settings = settingsStore.getSettings()
-    const geminiKey = settings.aiKeys.find((k) => k.provider === 'gemini' && k.apiKey.trim())
-    if (!geminiKey) {
-      toast('error', 'Эта функция пока работает только через Gemini — добавьте ключ Gemini в Настройках.')
-      return
-    }
+    if (!recognition) return
 
     let buffer: Buffer | null
     try {
       buffer = await captureRegionAtCursor(preloadPath)
     } catch (err) {
-      toast('error', `Не удалось сделать скриншот: ${(err as Error).message}`)
+      hud.show({ kind: 'message', tone: 'error', text: `Не удалось сделать скриншот: ${(err as Error).message}` })
       return
     }
     if (!buffer) return
 
-    const note = await notesStore.createNote({ title: 'Документ из скриншота' })
+    const note = await notesStore.createNote()
+    setActiveNoteId(note.id)
     broadcast(IPC.ON_NOTE_CREATED, note)
     broadcast(IPC.ON_NAVIGATE, { view: 'editor', noteId: note.id })
     broadcast(IPC.ON_NOTE_PROCESSING_START, note.id)
+    hud.show({ kind: 'working', text: 'Распознаю в новую заметку…' })
 
     try {
-      const result = await buildDocumentNoteBody(note.id, geminiKey.apiKey, buffer)
-      if (!result) {
-        toast('warning', 'Не удалось найти текст или фото на скриншоте.')
+      const result = await recognizeCapture({ png: buffer, noteId: note.id, recognition, withImages: true, windowInfo })
+      if (result.blocks.length === 0) {
+        hud.show({ kind: 'message', tone: 'warning', text: 'На скриншоте не удалось найти текст или фото.' })
         return
       }
-
-      const updated = await notesStore.updateNote(note.id, { body: result.html })
+      const { blocks } = withCompletenessFlag(result)
+      await notesStore.appendBlocks(note.id, blocks, result.source)
+      const title = await generateTitle(recognition.manager, result.blocks, settings.ai.mode === 'offline')
+      const updated = await notesStore.updateNote(note.id, { title })
       if (updated) {
         broadcast(IPC.ON_NOTE_UPDATED, updated)
-        toast('success', 'Документ создан')
+        hud.show({
+          kind: 'added',
+          tone: result.output.offlineFallback ? 'warning' : 'success',
+          noteId: note.id,
+          noteTitle: noteTitle(updated),
+          detail: result.output.notice ? formatRoutingNotice(result.output.notice) : 'Новая заметка'
+        })
       }
     } catch (err) {
-      const message = err instanceof AiError ? err.message : 'Не удалось распознать содержимое скриншота.'
-      toast('error', message)
+      logEvent('capture', { kind: 'newNote', error: err instanceof Error ? err.name : 'unknown' })
+      hud.show({ kind: 'message', tone: 'error', text: recognitionErrorMessage(err) })
     } finally {
       broadcast(IPC.ON_NOTE_PROCESSING_END, note.id)
     }

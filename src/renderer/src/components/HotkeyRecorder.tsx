@@ -1,4 +1,5 @@
-import { useEffect, useState, ReactElement } from 'react'
+import { useEffect, useState, type ReactElement } from 'react'
+import { cn, SettingsRow } from '../ui'
 const MODIFIER_KEYS = new Set(['Control', 'Alt', 'Shift', 'Meta'])
 
 const NAMED_KEYS: Record<string, string> = {
@@ -30,21 +31,24 @@ function keyToAcceleratorPart(key: string): string | null {
   return null
 }
 
-export function formatAccelerator(accelerator: string): string {
+export function formatAccelerator(accelerator: string | undefined): string {
+  // Optional hotkeys are stored as '' when off; never let a missing value break rendering.
+  if (!accelerator) return 'Не назначено'
   return accelerator
     .split('+')
     .map((part) => (part === 'Control' ? 'Ctrl' : part === 'Super' ? 'Win' : part))
     .join(' + ')
 }
 
-interface Props {
-  label: string
+interface FieldProps {
   value: string
-  error?: string
+  invalid?: boolean
   onChange: (accelerator: string) => void
+  'aria-label': string
 }
 
-export default function HotkeyRecorder({ label, value, error, onChange }: Props): ReactElement {
+/** Click, press a combination, done. Escape cancels. */
+export function HotkeyField({ value, invalid, onChange, ...aria }: FieldProps): ReactElement {
   const [recording, setRecording] = useState(false)
 
   useEffect(() => {
@@ -80,24 +84,40 @@ export default function HotkeyRecorder({ label, value, error, onChange }: Props)
   }, [recording, onChange])
 
   return (
-    <div className="flex items-center justify-between gap-4 py-3">
-      <div>
-        <p className="text-sm font-medium text-ink">{label}</p>
-        {error && <p className="mt-0.5 text-xs text-danger">{error}</p>}
-      </div>
-      <button
-        onClick={() => setRecording(true)}
-        onBlur={() => setRecording(false)}
-        className={`min-w-[180px] rounded-lg border px-3 py-2 text-center font-mono text-sm transition active:scale-[0.98] ${
-          recording
-            ? 'border-accent bg-accent-light text-accent'
-            : error
-              ? 'border-danger/60 bg-surface text-ink'
-              : 'border-surface-border bg-surface text-ink hover:border-accent'
-        }`}
-      >
-        {recording ? 'Нажмите комбинацию...' : formatAccelerator(value)}
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={() => setRecording(true)}
+      onBlur={() => setRecording(false)}
+      aria-label={`${aria['aria-label']}: ${recording ? 'нажмите комбинацию' : formatAccelerator(value)}`}
+      className={cn(
+        'h-8 min-w-[168px] rounded-lg border px-3 text-center text-sm font-medium transition-colors duration-fast',
+        recording
+          ? 'border-[var(--border-focus)] bg-accent-soft text-accent'
+          : invalid
+            ? 'border-danger bg-surface-2 text-fg'
+            : 'border-line bg-surface-2 text-fg hover:border-line-strong'
+      )}
+    >
+      {recording ? 'Нажмите комбинацию…' : formatAccelerator(value) || 'Выключено'}
+    </button>
+  )
+}
+
+interface Props {
+  label: string
+  description?: string
+  value: string
+  error?: string
+  onChange: (accelerator: string) => void
+}
+
+export default function HotkeyRecorder({ label, description, value, error, onChange }: Props): ReactElement {
+  return (
+    <SettingsRow
+      title={label}
+      description={description}
+      error={error}
+      control={<HotkeyField value={value} invalid={Boolean(error)} onChange={onChange} aria-label={label} />}
+    />
   )
 }

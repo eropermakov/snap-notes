@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactElement } from 'react'
 import { suggestEmojis, COMMON_EMOJIS } from '@shared/emojiSuggest'
-import { EmojiIcon, CloseIcon } from './icons'
+import { Button, Popover, Tooltip } from '../ui'
+import { EmojiIcon } from './icons'
 
 interface Props {
   emoji: string | null
@@ -8,73 +9,68 @@ interface Props {
   onSelect: (emoji: string | null) => void
 }
 
+function EmojiGrid({ items, onPick }: { items: string[]; onPick: (e: string) => void }): ReactElement {
+  return (
+    <div className="grid grid-cols-8 gap-0.5">
+      {items.map((e) => (
+        <button
+          key={e}
+          type="button"
+          onClick={() => onPick(e)}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-lg transition-colors duration-fast hover:bg-hover"
+        >
+          {e}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function EmojiPicker({ emoji, contextText, onSelect }: Props): ReactElement {
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null)
   const [open, setOpen] = useState(false)
-  const suggestions = useMemo(() => suggestEmojis(contextText), [contextText])
+  const suggestions = useMemo(() => (open ? suggestEmojis(contextText) : []), [contextText, open])
+
+  const pick = (e: string | null): void => {
+    onSelect(e)
+    setOpen(false)
+  }
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-surface-border bg-bg text-lg transition hover:border-accent active:scale-[0.97]"
-        title="Эмодзи заметки"
-      >
-        {emoji ?? <EmojiIcon className="h-4 w-4 text-muted" />}
-      </button>
+    <>
+      <Tooltip label={emoji ? 'Сменить эмодзи' : 'Добавить эмодзи'}>
+        <button
+          ref={setAnchor}
+          type="button"
+          aria-label="Эмодзи заметки"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-2xl text-fg-muted transition-colors duration-fast hover:bg-hover hover:text-fg-secondary"
+        >
+          {emoji ?? <EmojiIcon className="h-5 w-5" />}
+        </button>
+      </Tooltip>
 
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-20 mt-1 w-64 origin-top-left rounded-xl border border-surface-border bg-surface p-3 shadow-card-hover motion-safe:animate-pop-in">
-            {suggestions.length > 0 && (
-              <>
-                <p className="mb-1.5 text-xs font-medium text-muted">По смыслу заметки</p>
-                <div className="mb-3 flex flex-wrap gap-1">
-                  {suggestions.map((e) => (
-                    <button
-                      key={e}
-                      onClick={() => {
-                        onSelect(e)
-                        setOpen(false)
-                      }}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-lg transition hover:bg-accent-light active:scale-90"
-                    >
-                      {e}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-            <p className="mb-1.5 text-xs font-medium text-muted">Другие</p>
-            <div className="mb-2 flex flex-wrap gap-1">
-              {COMMON_EMOJIS.map((e) => (
-                <button
-                  key={e}
-                  onClick={() => {
-                    onSelect(e)
-                    setOpen(false)
-                  }}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-lg transition hover:bg-accent-light active:scale-90"
-                >
-                  {e}
-                </button>
-              ))}
+      <Popover open={open} onClose={() => setOpen(false)} anchor={anchor} placement="bottom-start" className="w-[296px] p-2" aria-label="Выбор эмодзи">
+        {suggestions.length > 0 && (
+          <>
+            <p className="px-1 pb-1 text-xs font-medium text-fg-muted">По смыслу заметки</p>
+            <div className="mb-2">
+              <EmojiGrid items={suggestions} onPick={pick} />
             </div>
-            {emoji && (
-              <button
-                onClick={() => {
-                  onSelect(null)
-                  setOpen(false)
-                }}
-                className="flex items-center gap-1 text-xs text-muted transition hover:text-danger active:scale-95"
-              >
-                <CloseIcon className="h-3 w-3" /> Убрать эмодзи
-              </button>
-            )}
+          </>
+        )}
+        <p className="px-1 pb-1 text-xs font-medium text-fg-muted">Популярные</p>
+        <EmojiGrid items={COMMON_EMOJIS} onPick={pick} />
+        {emoji && (
+          <div className="mt-2 border-t border-line pt-1.5">
+            <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => pick(null)}>
+              Убрать эмодзи
+            </Button>
           </div>
-        </>
-      )}
-    </div>
+        )}
+      </Popover>
+    </>
   )
 }

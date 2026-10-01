@@ -1,39 +1,53 @@
-import { useEffect, ReactElement } from 'react'
-import type { ToastPayload } from '@shared/types'
+import { useEffect, useRef, type ReactElement } from 'react'
+import type { AppToast } from '../store/useAppStore'
+import { Button, IconButton } from '../ui'
 import { CheckIcon, AlertTriangleIcon, XCircleIcon, CloseIcon } from './icons'
 
-const STYLES: Record<ToastPayload['type'], { border: string; iconColor: string }> = {
-  success: { border: 'border-success', iconColor: 'text-success' },
-  warning: { border: 'border-warning', iconColor: 'text-warning' },
-  error: { border: 'border-danger', iconColor: 'text-danger' }
+const ICON = {
+  success: <CheckIcon className="h-4 w-4 text-success" />,
+  warning: <AlertTriangleIcon className="h-4 w-4 text-warning" />,
+  error: <XCircleIcon className="h-4 w-4 text-danger" />
 }
 
 interface Props {
-  toast: ToastPayload
+  toast: AppToast
   onDismiss: () => void
 }
 
 export default function Toast({ toast, onDismiss }: Props): ReactElement {
-  const style = STYLES[toast.type]
+  const hovered = useRef(false)
 
   useEffect(() => {
-    const timer = setTimeout(onDismiss, 4000)
-    return () => clearTimeout(timer)
-  }, [onDismiss])
+    // Pause while hovered so an "Отменить" action can still be reached.
+    const timer = setInterval(() => {
+      if (!hovered.current) onDismiss()
+    }, toast.action ? 6000 : 4000)
+    return () => clearInterval(timer)
+  }, [onDismiss, toast.action])
 
   return (
     <div
-      className={`flex items-start gap-2.5 rounded-xl border-l-4 ${style.border} bg-surface p-3.5 shadow-card-hover`}
+      role={toast.type === 'error' ? 'alert' : 'status'}
+      onMouseEnter={() => (hovered.current = true)}
+      onMouseLeave={() => (hovered.current = false)}
+      className="flex items-center gap-3 rounded-2xl border border-line bg-elevated py-2 pl-4 pr-2 shadow-popover"
     >
-      <span className={`mt-0.5 shrink-0 ${style.iconColor}`}>
-        {toast.type === 'success' && <CheckIcon className="h-4 w-4" />}
-        {toast.type === 'warning' && <AlertTriangleIcon className="h-4 w-4" />}
-        {toast.type === 'error' && <XCircleIcon className="h-4 w-4" />}
-      </span>
-      <p className="flex-1 text-sm text-ink">{toast.message}</p>
-      <button onClick={onDismiss} className="shrink-0 text-muted transition hover:text-ink active:scale-[0.97]" title="Закрыть">
-        <CloseIcon className="h-3.5 w-3.5" />
-      </button>
+      <span className="shrink-0">{ICON[toast.type]}</span>
+      <p className="min-w-0 flex-1 break-words py-1 text-base text-fg">{toast.message}</p>
+      {toast.action && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-fg"
+          onClick={() => {
+            toast.action?.run()
+            onDismiss()
+          }}
+        >
+          {toast.action.label}
+        </Button>
+      )}
+      <IconButton size="sm" label="Закрыть" tooltip={false} icon={<CloseIcon className="h-3.5 w-3.5" />} onClick={onDismiss} />
     </div>
   )
 }

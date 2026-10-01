@@ -90,3 +90,8 @@ export function cropToPng(pngBuffer: Buffer, bbox: [number, number, number, numb
   if (cropped.isEmpty()) return null
   return cropped.toPNG()
 }
+
+export async function deleteNoteImage(noteId: string, imageId: string): Promise<void> {
+  const filePath = resolveSafeImagePath(noteId, imageId)
+  if (filePath) await fs.rm(filePath, { force: true }).catch(() => {})
+}

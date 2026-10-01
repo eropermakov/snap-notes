@@ -16,10 +16,18 @@ const ACCENT_LABELS: Record<AccentColor, string> = {
 }
 
 const ACCENT_SWATCH: Record<AccentColor, string> = {
-  green: '#34A853',
-  red: '#EA4335',
-  blue: '#4285F4',
-  yellow: '#F9AB00'
+  green: '#1E8E3E',
+  red: '#D93025',
+  blue: '#1A73E8',
+  yellow: '#E3A008'
+}
+
+export const ACCENT_OPTIONS: { color: AccentColor; label: string; swatch: string }[] = (
+  ['green', 'red', 'blue', 'yellow'] as AccentColor[]
+).map((color) => ({ color, label: ACCENT_LABELS[color], swatch: ACCENT_SWATCH[color] }))
+
+export function composeTheme(color: AccentColor, mode: ThemeMode): ThemeId {
+  return `${color}-${mode}` as ThemeId
 }
 
 const ACCENT_COLORS: AccentColor[] = ['green', 'red', 'blue', 'yellow']

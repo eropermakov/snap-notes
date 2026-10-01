@@ -9,7 +9,7 @@ Snap Notes — десктоп-приложение для Windows (Electron + Re
 - **Путь проекта:** `D:\SirVault\WeewScan 1`
 - **Репозиторий:** https://github.com/eropermakov/snap-notes (код запушен, история коммитов сохранена)
 - **Релизы:** https://github.com/eropermakov/snap-notes/releases — там же лежат `.exe`-установщики
-- **Текущая версия:** 1.1.1
+- **Текущая версия:** 1.4.0
 - **Язык интерфейса:** русский, везде
 
 ## Стек
@@ -53,6 +53,37 @@ npm run release       # собрать И опубликовать релиз н
 - **Автообновление через GitHub Releases** (`src/main/updater.ts`, `electron-updater`): проверка при старте + раз в 4 часа, автозагрузка в фоне, баннер «Перезапустить» снизу экрана (`UpdateBanner.tsx`), плюс ручная кнопка «Проверить обновления» в Настройках
 - **Версионирование + changelog**: `CHANGELOG.md` (для людей) + `src/shared/changelog.ts` (структурированные данные для диалога «Что нового» в приложении) — **держать в синхроне вручную**
 - **Редизайн** в духе Google Docs (нейтральные фоны вместо тёплого крема, через семантические цветовые токены `bg`/`surface`/`accent`/`success`/`warning`/`danger`)
+
+### Архитектура ИИ-провайдеров (v1.4)
+- Код: `src/main/providers/` — `AIProvider` (types.ts), `ProviderManager` (manager.ts, единственная точка входа для OCR и UI), `planRoute`/`runWithFallback` (router.ts, чистые функции), `UsageService` (статусы, лимиты, один таймер до ближайшего сброса), `ActivityLog` (собственная статистика — НЕ остаток лимита), `RecognitionService` (режимы best/balanced/economy/offline), `settingsMigration.ts`, `featureFlags.ts`. Реализации — `impl/` (chatgpt, claudeSubscription, gemini, groq, openaiApi, anthropicApi, tesseract). Общие типы — `src/shared/providers.ts`
+- **ChatGPT-план**: официальный Sign in with ChatGPT; SDK `@siwc/local` не опубликован в npm → лежит в `src/main/vendor/siwc-local/` (лицензия **только для некоммерческого использования**, изменения описаны в NOTICE.md). Остаток лимита OpenAI программно не отдаёт → только «Управление использованием»
+- **Claude-подписка**: Anthropic запрещает сторонним приложениям вход через claude.ai — провайдер-заглушка без кода аутентификации; для Claude используется Anthropic API
+- Ключи — `userData/secrets.json`, шифрование Electron safeStorage (DPAPI). В renderer ключи и токены не попадают никогда (`getPublicSettings`, `ProviderPublicState`)
+- Тесты: `npm test` (vitest, только моки, реальные API не вызываются) — `tests/providers/`
+- Журнал: `userData/logs/snap-notes.log` (без ключей/токенов/текста)
+- Проверка вживую без трогания своего профиля: `electron . --user-data-dir=<временная папка>`
+
+### Блочный формат заметок (v1.4)
+- `src/shared/blocks.ts` — типы блоков, `htmlToBlocks`/`blocksToHtml` (круговой обмен с сохранением `data-block`/`data-src`), санитайзинг inline-HTML; `blockExport.ts` — Markdown / «для AI» / текст / rich HTML / TSV / CSV
+- Файл заметки: `version: 2`, `blocks`, `sources` (оригинальный скриншот, приложение, окно, способ распознавания) **и** `body` (HTML). Редактор пока правит HTML, блоки выводятся из него при каждом сохранении; `body` оставлен и для совместимости со старыми версиями
+- Миграция v1→v2 при запуске, копия старых файлов — `userData/backups/notes-v1-<время>/`
+- Распознавание → блоки: `src/main/captureContent.ts` (JSON ИИ → `aiBlocks.ts`, офлайн — `localLayout.ts` по координатам строк Tesseract, очистка — `ocrCleanup.ts`, промпты — `ocrPrompts.ts`)
+- Действия над фрагментом: `src/main/noteActions.ts` («Привести в порядок», меню ИИ), экспорт/копирование — `src/main/noteExport.ts`
+
+### Интерфейс захвата (v1.4)
+- HUD — отдельное окно поверх всех (`src/main/hud.ts`, `components/capture/CaptureHud.tsx`, маршрут `#hud`): прогресс, «Отменить» / «Открыть», счётчик сессии, выбор заметки
+- Сессия захвата и выбор цели — `src/main/capturePipeline.ts`; окно выделения получает режим сессии (`overlay:mode`)
+- Редактор: `components/editor/` — `caret.ts` (позиция курсора + перенос захвата в неё), `FragmentTools` (меню фрагмента, оригинал, источник, проверка), `UncertainHover`, `TableToolbar`, `CodeTools`
+- Синхронизация редактора: внешние изменения заметки приходят как `noteRevisions[id]` в store; эхо собственных сохранений не сливается повторно
+- Живые тесты в изолированном профиле — через CDP (`--remote-debugging-port`) и тестовые хоткеи Ctrl+Alt+Shift+F6…F12
+
+### Дизайн-система и редизайн интерфейса (v1.4)
+- Каркас: `AppShell` = панель разделов слева (`components/shell/AppNavRail.tsx`, только глобальные режимы: Заметки / статус ИИ / Справка / Настройки) + контекстная боковая панель (своя у каждого раздела) + рабочая область. Навигация в store: `section`, `notesFilter` (all/pinned/trash — корзина это фильтр заметок), `settingsCategory`.
+- Токены — CSS-переменные в `src/renderer/src/styles/index.css` (`--bg-primary`, `--surface-1/2`, `--text-primary/secondary/muted`, `--accent`…), классы Tailwind в `tailwind.config.js` (`bg-canvas`, `bg-surface-1`, `text-fg-secondary`, `border-line`…). Старых токенов (`bg-bg`, `text-ink`, `text-muted`, `shadow-card`) больше нет. Модификатор прозрачности (`bg-accent/50`) с этими цветами НЕ работает — Tailwind молча не генерирует класс; использовать `opacity-*` или `color-mix` в CSS.
+- Общие компоненты — `src/renderer/src/ui/` (Button, IconButton, Input, Select, Toggle, SegmentedControl, ChoiceList, Popover, Menu/DropdownMenu/useContextMenu, Tooltip, Modal/ConfirmDialog, Page/Section/SettingsGroup/SettingsRow, EmptyState, Sidebar*). Новый UI собирать из них, а не из локальных классов.
+- Действия с заметкой — одно место: `components/notes/NoteMenuItems.tsx` (используется в «…» карточки, правом клике, боковой панели и редакторе).
+- Палитра команд Ctrl+K — `components/CommandPalette.tsx`; редкие действия добавлять туда, а не новыми кнопками на экран.
+- Адаптив: `hooks/useLayout.ts` (narrow < 1000px — боковая панель становится выдвижной, редактор на всю ширину).
 
 ### Осознанно НЕ сделано / отложено
 - **Google Docs интеграция** — пользователь попросил отложить («пока без гугл докса»), не делали

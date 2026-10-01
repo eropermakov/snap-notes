@@ -1,8 +1,7 @@
 import { createWorker, type Worker } from 'tesseract.js'
 import { app } from 'electron'
 import path from 'path'
-import { AiError } from './errors'
-import type { ApiKeyTestResult } from '../../shared/types'
+import type { LocalOcrEngine, LocalOcrLine, LocalOcrResult } from '../providers/impl/tesseract'
 
 let workerPromise: Promise<Worker> | null = null
 
@@ -18,22 +17,30 @@ function getWorker(): Promise<Worker> {
   return workerPromise
 }
 
-export async function extractRawWithLocalOcr(pngBuffer: Buffer): Promise<string> {
-  try {
-    const worker = await getWorker()
-    const result = await worker.recognize(pngBuffer)
-    return (result.data.text ?? '').trim()
-  } catch (err) {
-    throw new AiError('unknown', `Локальное распознавание не удалось: ${(err as Error).message}`)
+export async function recognizeLocal(pngBuffer: Buffer): Promise<LocalOcrResult> {
+  const worker = await getWorker()
+  const result = await worker.recognize(pngBuffer, {}, { text: true, blocks: true })
+  const lines: LocalOcrLine[] = []
+  for (const block of result.data.blocks ?? []) {
+    for (const paragraph of block.paragraphs ?? []) {
+      for (const line of paragraph.lines ?? []) {
+        lines.push({
+          text: line.text ?? '',
+          confidence: line.confidence ?? 0,
+          bbox: line.bbox,
+          wordConfidences: (line.words ?? []).map((w) => w.confidence ?? 0),
+          words: (line.words ?? []).map((w) => ({ text: w.text ?? '', confidence: w.confidence ?? 0, bbox: w.bbox }))
+        })
+      }
+    }
   }
+  return { text: (result.data.text ?? '').trim(), confidence: result.data.confidence ?? 0, lines }
 }
 
-export async function testLocalOcr(): Promise<ApiKeyTestResult> {
-  try {
+export const tesseractEngine: LocalOcrEngine = {
+  recognize: recognizeLocal,
+  ready: async () => {
     await getWorker()
-    return { ok: true, message: 'Локальное распознавание готово к работе' }
-  } catch (err) {
-    return { ok: false, message: `Не удалось подготовить локальное распознавание: ${(err as Error).message}` }
   }
 }
 

@@ -1,28 +1,53 @@
-import { BrowserWindow } from 'electron'
-import { randomUUID } from 'crypto'
+import { BrowserWindow, ipcMain } from 'electron'
 import stringSimilarity from 'string-similarity'
 import { IPC } from '../shared/ipc'
 import * as notesStore from './notesStore'
 import * as settingsStore from './settingsStore'
-import { extractHtmlWithFallback, extractHtmlHybrid } from './ai/router'
-import { AiError } from './ai/errors'
 import { captureRegionAtCursor, captureFullscreenAtCursor } from './screenshot'
 import { htmlToPlainText } from '../shared/htmlText'
-import { blocksToPlainText } from '../shared/ocrBlocks'
+import { blocksToText, newBlockId, type Block } from '../shared/blocks'
 import { looksIncomplete } from '../shared/completeness'
+import { formatRoutingNotice } from '../shared/usageFormat'
 import { saveToCache } from './screenshotCache'
-import { ToastPayload } from '../shared/types'
+import type { Note } from '../shared/types'
+import type { HudSession } from '../shared/hud'
+import type { RecognitionService } from './providers/recognition'
+import { AllProvidersFailedError } from './providers/router'
+import { discardCapture, recognizeCapture, type CaptureResult } from './captureContent'
+import { readForegroundWindow } from './windowInfo'
+import * as hud from './hud'
+import { logEvent } from './logger'
 
 let activeNoteId: string | null = null
 let capturing = false
 let getWin: (() => BrowserWindow | null) | null = null
+let recognition: RecognitionService | null = null
+let preload = ''
 
-export function initCapturePipeline(getMainWindow: () => BrowserWindow | null): void {
+/** Capture Session (§13): several captures appended to one note, in capture order. */
+let session: { noteId: string; count: number } | null = null
+
+export function initCapturePipeline(getMainWindow: () => BrowserWindow | null, service: RecognitionService): void {
   getWin = getMainWindow
+  recognition = service
+  // Enter / Esc in the selection overlay during a session finish it.
+  ipcMain.on(IPC.OVERLAY_FINISH_SESSION, () => finishCaptureSession())
+}
+
+export function recognitionErrorMessage(err: unknown): string {
+  if (err instanceof AllProvidersFailedError) {
+    if (err.attempts.length === 0) return 'Нет доступного источника распознавания. Проверьте раздел «ИИ и распознавание» в настройках.'
+    return 'Не удалось распознать: все источники вернули ошибку. Подробности — в разделе «Использование ИИ».'
+  }
+  return 'Не удалось распознать текст на изображении.'
 }
 
 export function setActiveNoteId(id: string | null): void {
   activeNoteId = id
+}
+
+export function getActiveNoteId(): string | null {
+  return activeNoteId
 }
 
 function broadcast(channel: string, payload?: unknown): void {
@@ -32,11 +57,13 @@ function broadcast(channel: string, payload?: unknown): void {
   }
 }
 
-function toast(type: ToastPayload['type'], message: string): void {
-  const win = getWin?.() ?? null
-  if (!win || win.isDestroyed()) return
-  const payload: ToastPayload = { id: randomUUID(), type, message }
-  win.webContents.send(IPC.ON_TOAST, payload)
+export function noteTitle(note: Note | undefined): string {
+  return note?.title.trim() || 'Новая заметка'
+}
+
+function sessionInfo(): HudSession | undefined {
+  if (!session) return undefined
+  return { count: session.count, noteTitle: noteTitle(notesStore.getNote(session.noteId)) }
 }
 
 function normalize(text: string): string {
@@ -69,74 +96,187 @@ function isDuplicateText(existingBodyHtml: string, newText: string): boolean {
   return false
 }
 
+/** Adds the "text may be cut off" warning (existing completeness heuristic) as its own block. */
+export function withCompletenessFlag(result: CaptureResult): { blocks: Block[]; flagged: boolean } {
+  // Only a trailing paragraph can look "cut off": lists, tables and code rarely end with a period.
+  const last = result.blocks[result.blocks.length - 1]
+  const flagged = last?.type === 'paragraph' && looksIncomplete(blocksToText([last]))
+  if (!flagged) return { blocks: result.blocks, flagged }
+  return {
+    blocks: [
+      { id: newBlockId(), sourceId: result.source.id, type: 'paragraph', tone: 'warning', html: '⚠️ Похоже, текст поместился не полностью' },
+      ...result.blocks
+    ],
+    flagged
+  }
+}
+
+async function createAndOpenNote(): Promise<Note> {
+  const note = await notesStore.createNote()
+  activeNoteId = note.id
+  broadcast(IPC.ON_NOTE_CREATED, note)
+  broadcast(IPC.ON_NAVIGATE, { view: 'editor', noteId: note.id })
+  return note
+}
+
+/** Where a capture goes: the session note, the open note, or (no note open) a new one / the user's pick. */
+async function resolveTarget(): Promise<{ note: Note; isNew: boolean } | null> {
+  if (session) {
+    const sessionNote = notesStore.getNote(session.noteId)
+    if (sessionNote && sessionNote.deletedAt === null) return { note: sessionNote, isNew: false }
+  }
+  const open = activeNoteId ? notesStore.getNote(activeNoteId) : undefined
+  if (open && open.deletedAt === null) return { note: open, isNew: false }
+
+  if (settingsStore.getSettings().captureNoNote === 'ask') {
+    const recent = notesStore
+      .listNotes()
+      .slice(0, 5)
+      .map((n) => ({ id: n.id, title: noteTitle(n) === 'Новая заметка' ? htmlToPlainText(n.body).slice(0, 40) || 'Без названия' : noteTitle(n) }))
+    const choice = await hud.pickNote(recent)
+    if (choice === null) return null
+    if (choice !== 'new') {
+      const picked = notesStore.getNote(choice)
+      if (picked && picked.deletedAt === null) {
+        activeNoteId = picked.id
+        return { note: picked, isNew: false }
+      }
+    }
+  }
+  return { note: await createAndOpenNote(), isNew: true }
+}
+
+/**
+ * Capture to Note (§1): select a region → recognize → structured blocks go into the open note (a new
+ * note when none is open, or the Capture Session's note). The editor then moves them to the caret.
+ * Progress and the result appear in the HUD, with Undo and Open.
+ */
 export async function runCapture(kind: 'region' | 'fullscreen', preloadPath: string): Promise<void> {
   if (capturing) return
   capturing = true
+  preload = preloadPath
+  // Before the overlay takes focus: which app/window the user is capturing from.
+  const windowInfo = readForegroundWindow()
 
   try {
     const settings = settingsStore.getSettings()
-    if (settings.aiKeys.length === 0) {
-      toast('error', 'Не задан ни один API-ключ. Откройте настройки, чтобы добавить ключ.')
-      return
-    }
+    if (!recognition) return
 
     let buffer: Buffer | null
     try {
-      buffer = kind === 'region' ? await captureRegionAtCursor(preloadPath) : await captureFullscreenAtCursor()
+      buffer =
+        kind === 'region'
+          ? await captureRegionAtCursor(preloadPath, session ? { session: { count: session.count } } : {})
+          : await captureFullscreenAtCursor()
     } catch (err) {
-      toast('error', `Не удалось сделать скриншот: ${(err as Error).message}`)
+      hud.show({ kind: 'message', tone: 'error', text: `Не удалось сделать скриншот: ${(err as Error).message}`, session: sessionInfo() })
       return
     }
-    if (!buffer) return
+    if (!buffer) {
+      if (session) hud.show({ kind: 'session', session: sessionInfo()! })
+      return
+    }
 
     if (settings.screenshotCacheEnabled) {
       saveToCache(buffer).catch(() => {})
     }
 
-    let note = activeNoteId ? notesStore.getNote(activeNoteId) : undefined
-    let isNew = false
-    if (!note) {
-      note = await notesStore.createNote()
-      isNew = true
-      activeNoteId = note.id
-      broadcast(IPC.ON_NOTE_CREATED, note)
-      broadcast(IPC.ON_NAVIGATE, { view: 'editor', noteId: note.id })
-    }
+    const target = await resolveTarget()
+    if (!target) return
+    const { note, isNew } = target
 
+    hud.show({ kind: 'working', text: 'Распознаю…', session: sessionInfo() })
     broadcast(IPC.ON_NOTE_PROCESSING_START, note.id)
     try {
-      const existingContext = isNew ? undefined : htmlToPlainText(note.body).slice(-800)
+      const result = await recognizeCapture({ png: buffer, noteId: note.id, recognition, withImages: true, windowInfo })
+      const detail = result.output.notice ? formatRoutingNotice(result.output.notice) : undefined
+      const plainText = blocksToText(result.blocks)
 
-      const localKey = settings.aiKeys.find((k) => k.provider === 'local')
-      const cloudKeys = settings.aiKeys.filter((k) => k.provider !== 'local')
-
-      const { html, blocks } =
-        settings.useHybridPipeline && localKey
-          ? await extractHtmlHybrid(localKey, cloudKeys, buffer, settings.ocrPreset, existingContext)
-          : await extractHtmlWithFallback(settings.aiKeys, buffer, settings.ocrPreset, existingContext)
-      const plainText = blocksToPlainText(blocks)
-
-      if (!plainText.trim()) {
-        toast('warning', 'На скриншоте не удалось найти текст.')
-      } else if (!isNew && isDuplicateText(note.body, plainText)) {
-        toast('warning', 'Похожий текст уже есть — пропущено.')
+      if (result.blocks.length === 0) {
+        hud.show({ kind: 'message', tone: 'warning', text: 'На скриншоте не удалось найти текст.', session: sessionInfo() })
+      } else if (!isNew && !session && plainText.trim() && isDuplicateText(note.body, plainText)) {
+        await discardCapture(note.id, result)
+        hud.show({ kind: 'message', tone: 'warning', text: 'Похожий текст уже есть в заметке — пропущено.' })
       } else {
-        const flagged = looksIncomplete(plainText)
-        const marker = flagged ? '<p class="ocr-flag">⚠️ Похоже, текст поместился не полностью</p>' : ''
-        const nextBody = note.body + marker + html
-        const updated = await notesStore.updateNote(note.id, { body: nextBody })
+        const { blocks, flagged } = withCompletenessFlag(result)
+        const updated = await notesStore.appendBlocks(note.id, blocks, result.source)
         if (updated) {
           broadcast(IPC.ON_NOTE_UPDATED, updated)
-          toast(flagged ? 'warning' : 'success', flagged ? 'Текст добавлен, но похоже, поместился не весь' : 'Текст добавлен')
+          // The editor moves the new blocks to the caret if the caret was in this note's text.
+          broadcast(IPC.ON_CAPTURE_ADDED, { noteId: note.id, sourceId: result.source.id })
+          if (session) {
+            session.count += 1
+            hud.setSession(sessionInfo() ?? null)
+          }
+          hud.show({
+            kind: 'added',
+            tone: flagged || result.output.offlineFallback ? 'warning' : 'success',
+            noteId: note.id,
+            noteTitle: noteTitle(updated),
+            sourceId: result.source.id,
+            detail: flagged ? 'Похоже, текст поместился не полностью' : detail,
+            session: sessionInfo()
+          })
         }
       }
     } catch (err) {
-      const message = err instanceof AiError ? err.message : 'Не удалось распознать текст на изображении.'
-      toast('error', message)
+      logEvent('capture', { kind, error: err instanceof Error ? err.name : 'unknown' })
+      hud.show({ kind: 'message', tone: 'error', text: recognitionErrorMessage(err), session: sessionInfo() })
     } finally {
       broadcast(IPC.ON_NOTE_PROCESSING_END, note.id)
     }
   } finally {
     capturing = false
   }
+}
+
+export function isCaptureSessionActive(): boolean {
+  return session !== null
+}
+
+/** Session hotkey: starts a Capture Session (and its first capture), or finishes the running one. */
+export async function toggleCaptureSession(preloadPath: string): Promise<void> {
+  if (session) {
+    finishCaptureSession()
+    return
+  }
+  preload = preloadPath
+  const open = activeNoteId ? notesStore.getNote(activeNoteId) : undefined
+  const note = open && open.deletedAt === null ? open : await createAndOpenNote()
+  session = { noteId: note.id, count: 0 }
+  hud.setSession(sessionInfo() ?? null)
+  hud.show({ kind: 'session', session: sessionInfo()! })
+  await runCapture('region', preloadPath)
+}
+
+/** "+ Фрагмент" in the HUD. */
+export function captureNextInSession(): void {
+  if (session) void runCapture('region', preload)
+}
+
+export function finishCaptureSession(): void {
+  if (!session) return
+  const finished = session
+  session = null
+  hud.setSession(null)
+  const note = notesStore.getNote(finished.noteId)
+  hud.show({
+    kind: 'added',
+    tone: 'success',
+    noteId: finished.noteId,
+    noteTitle: noteTitle(note),
+    detail: `Сессия завершена · фрагментов: ${finished.count}`
+  })
+}
+
+/** HUD "Отменить": removes the capture's blocks, metadata and original screenshot. */
+export async function undoCapture(noteId: string, sourceId: string): Promise<void> {
+  const updated = await notesStore.removeSource(noteId, sourceId)
+  if (!updated) return
+  broadcast(IPC.ON_NOTE_UPDATED, updated)
+  if (session && session.noteId === noteId && session.count > 0) {
+    session.count -= 1
+    hud.setSession(sessionInfo() ?? null)
+  }
+  hud.show({ kind: 'message', tone: 'warning', text: 'Добавление отменено', session: sessionInfo() })
 }

@@ -87,7 +87,12 @@ export function prewarmOverlay(preloadPath: string): void {
   ensureOverlayWindow(preloadPath)
 }
 
-export function captureRegionAtCursor(preloadPath: string): Promise<Buffer | null> {
+/** Extra context for the selection overlay (e.g. a running Capture Session: Enter/Esc finish it). */
+export interface OverlayMode {
+  session?: { count: number }
+}
+
+export function captureRegionAtCursor(preloadPath: string, mode: OverlayMode = {}): Promise<Buffer | null> {
   const display = getActiveDisplay()
   const { win, readyPromise } = ensureOverlayWindow(preloadPath)
 
@@ -150,6 +155,7 @@ export function captureRegionAtCursor(preloadPath: string): Promise<Buffer | nul
 
         void readyPromise.then(() => {
           if (win.isDestroyed() || settled) return
+          win.webContents.send(IPC.OVERLAY_MODE, mode)
           win.webContents.send(IPC.OVERLAY_IMAGE, dataUrl)
           win.show()
           win.focus()
@@ -227,6 +233,7 @@ export function selectRegionRect(preloadPath: string): Promise<ScreenRegion | nu
 
         void readyPromise.then(() => {
           if (win.isDestroyed() || settled) return
+          win.webContents.send(IPC.OVERLAY_MODE, {})
           win.webContents.send(IPC.OVERLAY_IMAGE, dataUrl)
           win.show()
           win.focus()

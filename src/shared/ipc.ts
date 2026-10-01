@@ -9,18 +9,34 @@ export const IPC = {
   NOTES_RESTORE: 'notes:restore',
   NOTES_PERMANENT_DELETE: 'notes:permanentDelete',
   NOTES_EMPTY_TRASH: 'notes:emptyTrash',
+  NOTES_COPY: 'notes:copy',
+  NOTES_EXPORT: 'notes:export',
+  NOTES_REMOVE_SOURCE: 'notes:removeSource',
+  NOTES_TIDY_SOURCE: 'notes:tidySource',
+  NOTES_AI_ACTION: 'notes:aiAction',
 
   SETTINGS_GET: 'settings:get',
   SETTINGS_UPDATE: 'settings:update',
-  SETTINGS_TEST_API_KEY: 'settings:testApiKey',
   SETTINGS_GET_DATA_PATH: 'settings:getDataPath',
   SETTINGS_OPEN_DATA_FOLDER: 'settings:openDataFolder',
   SETTINGS_EXPORT_NOTES: 'settings:exportNotes',
   SETTINGS_EXPORT_NOTES_DOCX: 'settings:exportNotesDocx',
   SETTINGS_RESET_ALL: 'settings:resetAll',
   SETTINGS_GET_STORAGE_STATS: 'settings:getStorageStats',
-  SETTINGS_GET_USAGE: 'settings:getUsage',
   SETTINGS_CLEAR_SCREENSHOT_CACHE: 'settings:clearScreenshotCache',
+
+  PROVIDERS_LIST: 'providers:list',
+  PROVIDERS_SET_KEY: 'providers:setKey',
+  PROVIDERS_RENAME_KEY: 'providers:renameKey',
+  PROVIDERS_REMOVE_KEY: 'providers:removeKey',
+  PROVIDERS_TEST: 'providers:test',
+  PROVIDERS_CONNECT: 'providers:connect',
+  PROVIDERS_CANCEL_CONNECT: 'providers:cancelConnect',
+  PROVIDERS_DISCONNECT: 'providers:disconnect',
+  PROVIDERS_REFRESH_MODELS: 'providers:refreshModels',
+  PROVIDERS_REFRESH_USAGE: 'providers:refreshUsage',
+  PROVIDERS_OPEN_MANAGE_USAGE: 'providers:openManageUsage',
+  ACTIVITY_SUMMARY: 'activity:summary',
 
   APP_GET_VERSION: 'app:getVersion',
   APP_OPEN_EXTERNAL: 'app:openExternal',
@@ -32,6 +48,15 @@ export const IPC = {
   OVERLAY_IMAGE: 'overlay:image',
   OVERLAY_SELECTION: 'overlay:selection',
   OVERLAY_CANCEL: 'overlay:cancel',
+  OVERLAY_MODE: 'overlay:mode',
+  OVERLAY_FINISH_SESSION: 'overlay:finishSession',
+
+  HUD_STATE: 'hud:state',
+  HUD_READY: 'hud:ready',
+  HUD_ACTION: 'hud:action',
+
+  NOTES_REPLACE_SOURCE_HTML: 'notes:replaceSourceHtml',
+  ON_CAPTURE_ADDED: 'on:capture:added',
 
   ON_NOTE_CREATED: 'on:note:created',
   ON_NOTE_UPDATED: 'on:note:updated',
@@ -42,5 +67,6 @@ export const IPC = {
   ON_NAVIGATE: 'on:navigate',
   ON_TRAY_NEW_NOTE_CAPTURE: 'on:tray:newNoteCapture',
   ON_UPDATE_AVAILABLE: 'on:update:available',
-  ON_UPDATE_READY: 'on:update:ready'
+  ON_UPDATE_READY: 'on:update:ready',
+  ON_PROVIDERS_CHANGED: 'on:providers:changed'
 } as const

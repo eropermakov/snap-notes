@@ -130,3 +130,56 @@ export function stitchFrames(pngBuffers: Buffer[]): Buffer | null {
 
   return nativeImage.createFromBitmap(out, { width, height: totalHeight }).toPNG()
 }
+
+/**
+ * Splits a tall PNG into chunks of about `targetHeight` rows, cutting at the quietest row (least
+ * pixel variation — typically the gap between lines or paragraphs) near each target, so text lines
+ * are not cut in half. Images shorter than `targetHeight * 1.25` are returned as one chunk.
+ */
+export function splitAtQuietRows(pngBuffer: Buffer, targetHeight = 2000, searchWindow = 300): Buffer[] {
+  const img = nativeImage.createFromBuffer(pngBuffer)
+  const { width, height } = img.getSize()
+  if (!width || !height || height <= targetHeight * 1.25) return [pngBuffer]
+  const bitmap = img.toBitmap()
+  const rowBytes = width * 4
+  const step = Math.max(1, Math.floor(width / 200))
+
+  const rowVariation = (y: number): number => {
+    const offset = y * rowBytes
+    let min = 255
+    let max = 0
+    for (let x = 0; x < width; x += step) {
+      const i = offset + x * 4
+      const lum = (bitmap[i] + bitmap[i + 1] + bitmap[i + 2]) / 3
+      if (lum < min) min = lum
+      if (lum > max) max = lum
+    }
+    return max - min
+  }
+
+  const cuts: number[] = []
+  let y = targetHeight
+  while (y < height - targetHeight * 0.25) {
+    let best = y
+    let bestScore = Infinity
+    for (let candidate = Math.max(1, y - searchWindow); candidate < Math.min(height - 1, y + searchWindow); candidate++) {
+      const score = rowVariation(candidate)
+      if (score < bestScore) {
+        bestScore = score
+        best = candidate
+        if (score === 0) break
+      }
+    }
+    cuts.push(best)
+    y = best + targetHeight
+  }
+
+  const chunks: Buffer[] = []
+  let start = 0
+  for (const cut of [...cuts, height]) {
+    if (cut - start < 1) continue
+    chunks.push(img.crop({ x: 0, y: start, width, height: cut - start }).toPNG())
+    start = cut
+  }
+  return chunks
+}

@@ -1,13 +1,25 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, Notification } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createMainWindow } from './windows'
 import { registerIpcHandlers } from './ipc'
 import { initNotesStore, purgeExpiredTrash } from './notesStore'
-import { getSettings, updateSettings } from './settingsStore'
-import { registerHotkeys, unregisterAllHotkeys } from './hotkeys'
+import { getSettings, updateSettings, runAiMigration } from './settingsStore'
+import { HOTKEY_KINDS, registerHotkeys, unregisterAllHotkeys, type HotkeyHandlers } from './hotkeys'
 import { createTray, destroyTray, isTrayActive } from './tray'
-import { initCapturePipeline, runCapture, setActiveNoteId } from './capturePipeline'
+import {
+  captureNextInSession,
+  finishCaptureSession,
+  getActiveNoteId,
+  initCapturePipeline,
+  runCapture,
+  setActiveNoteId,
+  toggleCaptureSession,
+  undoCapture
+} from './capturePipeline'
+import { destroyHud, initHud, prewarmHud } from './hud'
+import { copyNote } from './noteExport'
+import * as notesStore from './notesStore'
 import { initDocumentCapture, runDocumentCapture } from './documentCapture'
 import { initLongScreenshot, toggleLongScreenshot, cancelLongScreenshotSession } from './longScreenshot'
 import { initImageProtocol } from './imageStore'
@@ -16,13 +28,17 @@ import { initScreenshotCache, purgeExpired } from './screenshotCache'
 import { prewarmOverlay } from './screenshot'
 import { terminateLocalOcr } from './ai/local'
 import { initUpdater } from './updater'
+import { createProviderSystem, type ProviderSystem } from './providers'
+import { registerProviderIpc } from './providersIpc'
+import { logEvent } from './logger'
 import { IPC } from '../shared/ipc'
 import { AppSettings, HotkeyRegistrationResult } from '../shared/types'
 
 const CACHE_PURGE_INTERVAL_MS = 30 * 60 * 1000
 
 function backgroundColorForTheme(theme: AppSettings['theme']): string {
-  return theme.endsWith('-dark') ? '#1E1F22' : '#F7F8FA'
+  // Matches --bg-secondary (the app shell) so the first paint does not flash.
+  return theme.endsWith('-dark') ? '#151716' : '#F7F7F6'
 }
 
 const preloadPath = join(__dirname, '../preload/index.js')
@@ -32,18 +48,32 @@ const iconPath = app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
+let providerSystem: ProviderSystem | null = null
 
-function hotkeyHandlers(): {
-  onRegion: () => void
-  onFullscreen: () => void
-  onDocument: () => void
-  onLongScreenshot: () => void
-} {
+/** Copy for AI (§15) from anywhere: the open note, else the most recently edited one. */
+async function copyCurrentNoteForAi(): Promise<void> {
+  const activeId = getActiveNoteId()
+  const note = (activeId ? notesStore.getNote(activeId) : undefined) ?? notesStore.listNotes()[0]
+  const notify = (body: string): void => {
+    if (Notification.isSupported()) new Notification({ title: 'Snap Notes', body, silent: true }).show()
+  }
+  if (!note || note.deletedAt !== null) {
+    notify('Нет заметки для копирования')
+    return
+  }
+  await copyNote(note, 'ai')
+  notify(`Скопировано для AI: «${note.title.trim() || 'Без названия'}»`)
+}
+
+function hotkeyHandlers(): HotkeyHandlers {
   return {
-    onRegion: () => void runCapture('region', preloadPath),
-    onFullscreen: () => void runCapture('fullscreen', preloadPath),
-    onDocument: () => void runDocumentCapture(preloadPath),
-    onLongScreenshot: () => void toggleLongScreenshot(preloadPath)
+    region: () => void runCapture('region', preloadPath),
+    fullscreen: () => void runCapture('fullscreen', preloadPath),
+    document: () => void runDocumentCapture(preloadPath),
+    longScreenshot: () => void toggleLongScreenshot(preloadPath),
+    copyForAi: () => void copyCurrentNoteForAi(),
+    openApp: () => showMainWindow(),
+    session: () => void toggleCaptureSession(preloadPath)
   }
 }
 
@@ -88,27 +118,16 @@ async function handleSettingsChanged(
 ): Promise<HotkeyRegistrationResult | null> {
   let hotkeyResult: HotkeyRegistrationResult | null = null
 
-  if (
-    next.hotkeys.region !== prev.hotkeys.region ||
-    next.hotkeys.fullscreen !== prev.hotkeys.fullscreen ||
-    next.hotkeys.document !== prev.hotkeys.document ||
-    next.hotkeys.longScreenshot !== prev.hotkeys.longScreenshot
-  ) {
+  if (HOTKEY_KINDS.some((kind) => next.hotkeys[kind] !== prev.hotkeys[kind])) {
     hotkeyResult = applyHotkeys(next)
 
-    const corrected = {
-      region: hotkeyResult.region.ok ? next.hotkeys.region : prev.hotkeys.region,
-      fullscreen: hotkeyResult.fullscreen.ok ? next.hotkeys.fullscreen : prev.hotkeys.fullscreen,
-      document: hotkeyResult.document.ok ? next.hotkeys.document : prev.hotkeys.document,
-      longScreenshot: hotkeyResult.longScreenshot.ok ? next.hotkeys.longScreenshot : prev.hotkeys.longScreenshot
+    // A hotkey that could not be registered keeps its previous, working combination.
+    const corrected = { ...next.hotkeys }
+    for (const kind of HOTKEY_KINDS) {
+      if (!hotkeyResult[kind].ok) corrected[kind] = prev.hotkeys[kind]
     }
 
-    if (
-      corrected.region !== next.hotkeys.region ||
-      corrected.fullscreen !== next.hotkeys.fullscreen ||
-      corrected.document !== next.hotkeys.document ||
-      corrected.longScreenshot !== next.hotkeys.longScreenshot
-    ) {
+    if (HOTKEY_KINDS.some((kind) => corrected[kind] !== next.hotkeys[kind])) {
       applyHotkeys({ ...next, hotkeys: corrected })
       updateSettings({ hotkeys: corrected })
     }
@@ -116,6 +135,10 @@ async function handleSettingsChanged(
 
   if (next.minimizeToTray !== prev.minimizeToTray) {
     applyTray(next)
+  }
+
+  if (JSON.stringify(next.ai) !== JSON.stringify(prev.ai)) {
+    providerSystem?.manager.emit()
   }
 
   if (next.theme !== prev.theme && mainWindow && !mainWindow.isDestroyed()) {
@@ -165,13 +188,37 @@ if (!gotLock) {
     await initNotesStore()
     await initScreenshotCache()
 
+    const system = createProviderSystem()
+    providerSystem = system
+    // Legacy plaintext keys → OS-encrypted storage, verified before the plaintext copy is removed.
+    try {
+      const migration = runAiMigration(system.secrets)
+      if (migration.migratedKeyIds.length || migration.failedKeyIds.length) {
+        logEvent('migration', { migrated: migration.migratedKeyIds.length, failed: migration.failedKeyIds.length })
+      }
+    } catch (err) {
+      logEvent('migration', { error: err instanceof Error ? err.name : 'unknown' })
+    }
+    void system.manager.refreshAll().then(() => system.manager.warmModels())
+
     mainWindow = createMainWindow(preloadPath, iconPath, backgroundColorForTheme(getSettings().theme))
     attachWindowLifecycle(mainWindow)
-    initCapturePipeline(() => mainWindow)
-    initDocumentCapture(() => mainWindow)
-    initLongScreenshot(() => mainWindow)
+    initCapturePipeline(() => mainWindow, system.recognition)
+    initDocumentCapture(() => mainWindow, system.recognition)
+    initLongScreenshot(() => mainWindow, system.recognition)
     initImageProtocol()
     prewarmOverlay(preloadPath)
+    initHud(preloadPath, {
+      undo: (noteId, sourceId) => void undoCapture(noteId, sourceId),
+      open: (noteId) => {
+        showMainWindow()
+        setActiveNoteId(noteId)
+        mainWindow?.webContents.send(IPC.ON_NAVIGATE, { view: 'editor', noteId })
+      },
+      sessionNext: () => captureNextInSession(),
+      sessionFinish: () => finishCaptureSession()
+    })
+    prewarmHud()
     initUpdater(() => mainWindow)
 
     ipcMain.handle(IPC.APP_CAPTURE_DOCUMENT, () => void runDocumentCapture(preloadPath))
@@ -179,8 +226,17 @@ if (!gotLock) {
     registerIpcHandlers({
       getMainWindow: () => mainWindow,
       setActiveNoteId,
-      onSettingsChanged: handleSettingsChanged
+      onSettingsChanged: handleSettingsChanged,
+      resetProviders: async () => {
+        await system.chatgpt.disconnect().catch(() => undefined)
+        const settings = getSettings()
+        for (const provider of ['gemini', 'groq', 'openai', 'anthropic'] as const) {
+          for (const key of settings.providerKeys[provider] ?? []) system.secrets.delete(key.id)
+        }
+        system.activity.clear()
+      }
     })
+    registerProviderIpc(system, () => mainWindow)
 
     const settings = getSettings()
     applyHotkeys(settings)
@@ -206,6 +262,8 @@ if (!gotLock) {
     isQuitting = true
     unregisterAllHotkeys()
     cancelLongScreenshotSession()
+    providerSystem?.dispose()
+    destroyHud()
     void terminateLocalOcr()
   })
 

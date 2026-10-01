@@ -1,8 +1,10 @@
 import type { ReactElement } from 'react'
 import { motion } from 'framer-motion'
 import { useAppStore } from '../store/useAppStore'
-import { SparkleIcon, CloseIcon } from './icons'
+import { Button, EASE_OUT, IconButton, Spinner } from '../ui'
+import { CloseIcon, RefreshIcon } from './icons'
 
+/** Floating, dismissable notice. Only "update ready" gets a primary action. */
 export default function UpdateBanner(): ReactElement | null {
   const updateAvailableVersion = useAppStore((s) => s.updateAvailableVersion)
   const updateReadyVersion = useAppStore((s) => s.updateReadyVersion)
@@ -15,36 +17,24 @@ export default function UpdateBanner(): ReactElement | null {
 
   return (
     <motion.div
-      initial={{ y: 60, opacity: 0 }}
+      role="status"
+      initial={{ y: 12, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      exit={{ y: 60, opacity: 0 }}
-      transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-      className="fixed bottom-6 left-1/2 z-[250] flex w-full max-w-md -translate-x-1/2 items-center gap-3 rounded-2xl border border-surface-border bg-surface p-4 shadow-card-hover"
+      exit={{ y: 8, opacity: 0 }}
+      transition={{ duration: 0.2, ease: EASE_OUT }}
+      className="fixed bottom-5 left-1/2 z-[340] flex w-[440px] max-w-[calc(100vw-40px)] -translate-x-1/2 items-center gap-3 rounded-2xl border border-line bg-elevated py-2.5 pl-4 pr-2 shadow-popover"
     >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-light text-accent">
-        {ready ? (
-          <SparkleIcon className="h-4 w-4" />
-        ) : (
-          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-        )}
-      </div>
+      <span className="shrink-0 text-fg-secondary">{ready ? <RefreshIcon /> : <Spinner />}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-ink">
-          {ready ? `Обновление ${version} готово` : `Скачивается обновление ${version}`}
-        </p>
-        <p className="text-xs text-muted">{ready ? 'Перезапустите, чтобы установить' : 'Это займёт немного времени'}</p>
+        <p className="text-base font-medium text-fg">{ready ? `Обновление ${version} готово` : `Скачивается обновление ${version}`}</p>
+        <p className="text-sm text-fg-secondary">{ready ? 'Перезапустите, чтобы установить' : 'Это займёт немного времени'}</p>
       </div>
       {ready && (
-        <button
-          onClick={installUpdate}
-          className="shrink-0 rounded-full bg-accent px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-accent-hover active:scale-[0.97]"
-        >
+        <Button variant="primary" size="sm" onClick={installUpdate}>
           Перезапустить
-        </button>
+        </Button>
       )}
-      <button onClick={dismissUpdateBanner} className="shrink-0 text-muted transition hover:text-ink active:scale-[0.97]" title="Позже">
-        <CloseIcon className="h-3.5 w-3.5" />
-      </button>
+      <IconButton size="sm" label="Позже" icon={<CloseIcon className="h-3.5 w-3.5" />} onClick={dismissUpdateBanner} />
     </motion.div>
   )
 }
