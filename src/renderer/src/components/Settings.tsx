@@ -332,6 +332,17 @@ function HotkeysPage(): ReactElement | null {
             }
           />
           <SettingsRow
+            title="Убирать повторы при распознавании"
+            description="Убирает зациклившийся ответ ИИ (одна и та же строка много раз подряд) и строки, которые уже были в конце предыдущего снимка, если вы снимали длинную страницу по частям. Оригинал снимка остаётся в заметке."
+            control={
+              <Toggle
+                aria-label="Убирать повторы при распознавании"
+                checked={settings.ocrTrimRepeats}
+                onChange={(checked) => void updateSettings({ ocrTrimRepeats: checked })}
+              />
+            }
+          />
+          <SettingsRow
             title="Одновременных запросов к ИИ"
             description="По умолчанию 1 — самый бережный к лимитам вариант. Текст в заметке в любом случае встаёт в порядке снимков."
             control={

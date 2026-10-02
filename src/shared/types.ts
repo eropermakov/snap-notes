@@ -143,6 +143,8 @@ export interface AppSettings {
   ocrQueueEnabled: boolean
   /** Captures recognized at the same time (1–3). Results are still written in capture order. */
   ocrMaxConcurrent: number
+  /** Remove runaway AI repetition and the overlap between two consecutive captures (the screenshot is kept). */
+  ocrTrimRepeats: boolean
   /** '' = the app's default font. */
   editorFontFamily: string
   editorFontSize: number
@@ -206,6 +208,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ocrFeedback: 'visual',
   ocrQueueEnabled: true,
   ocrMaxConcurrent: 1,
+  ocrTrimRepeats: true,
   editorFontFamily: '',
   editorFontSize: 14,
   windowState: null,

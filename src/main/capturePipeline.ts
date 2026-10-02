@@ -23,6 +23,7 @@ import { broadcastNoteEvent } from './noteWindows'
 import { deleteNoteImage, saveDocumentImage } from './imageStore'
 import { OCRQueueService, type RunSummary } from './ocr/OCRQueueService'
 import { createFileJobStore } from './ocr/jobStore'
+import { collapseRunaway, trimOverlap } from '../shared/repeatGuard'
 import * as hud from './hud'
 import { logEvent } from './logger'
 
@@ -347,11 +348,14 @@ async function recognizeJob(job: OcrJob, png: Buffer): Promise<OcrJobResult> {
     windowInfo: job.windowInfo ? Promise.resolve(job.windowInfo) : undefined,
     sourceId: job.sourceId
   })
-  const { blocks, flagged } = withCompletenessFlag(result)
+  // A looping answer is cut down before anything else looks at it (also before the "cut off" check).
+  const guarded = settingsStore.getSettings().ocrTrimRepeats ? collapseRunaway(result.blocks) : { blocks: result.blocks, removed: 0 }
+  const { blocks, flagged } = withCompletenessFlag({ ...result, blocks: guarded.blocks })
   return {
     blocks,
     source: { ...result.source, jobId: job.id },
-    empty: result.blocks.length === 0,
+    empty: guarded.blocks.length === 0,
+    ...(guarded.removed ? { repeatsRemoved: guarded.removed } : {}),
     offlineFallback: result.output.offlineFallback,
     flagged,
     ...(result.output.notice ? { notice: formatRoutingNotice(result.output.notice) } : {})
@@ -361,6 +365,8 @@ async function recognizeJob(job: OcrJob, png: Buffer): Promise<OcrJobResult> {
 async function commitJob(job: OcrJob, result: OcrJobResult): Promise<void> {
   const noteId = job.targetNoteId
   let updated: Note | null
+  let notice = result.notice
+  if (result.repeatsRemoved) notice = [notice, 'Зациклившийся повтор в ответе убран'].filter(Boolean).join(' · ')
   if (job.replacesSource) {
     // Retry of a failed capture: the new text takes the place of the "could not recognize" note.
     const previousImage = notesStore.getNote(noteId)?.sources?.[job.sourceId]?.imageId
@@ -368,15 +374,31 @@ async function commitJob(job: OcrJob, result: OcrJobResult): Promise<void> {
     updated = (await notesStore.putSource(noteId, result.source)) ?? updated
     if (previousImage && previousImage !== result.source.imageId) await deleteNoteImage(noteId, previousImage)
   } else {
-    updated = await notesStore.appendBlocks(noteId, result.blocks, result.source)
+    // Committing is idempotent: after a crash between "written" and "marked done" the job is committed again.
+    if (notesStore.getNote(noteId)?.sources?.[job.sourceId]) return
+    const trimmed = trimCaptureOverlap(noteId, result.blocks)
+    if (trimmed.removed) notice = [notice, `Повтор с предыдущим снимком убран: ${trimmed.removed}`].filter(Boolean).join(' · ')
+    updated = await notesStore.appendBlocks(noteId, trimmed.blocks, result.source)
     // A note made by this capture gets a short local title from its first meaningful line.
     if (updated && job.createdNote) updated = (await notesStore.setAutoTitle(noteId, heuristicTitle(result.blocks))) ?? updated
   }
   if (!updated) throw new Error('note not found')
-  lastCommit = { noteId, sourceId: job.sourceId, notice: result.notice, warn: Boolean(result.flagged || result.offlineFallback) }
+  lastCommit = { noteId, sourceId: job.sourceId, notice, warn: Boolean(result.flagged || result.offlineFallback) }
   broadcast(IPC.ON_NOTE_UPDATED, updated)
   // The editor moves the new blocks to the caret if the caret was in this note's text.
   if (!job.replacesSource) broadcast(IPC.ON_CAPTURE_ADDED, { noteId, sourceId: job.sourceId })
+}
+
+/** The lines this capture shares with the end of the previous one (a long page captured in pieces) are not added twice. */
+function trimCaptureOverlap(noteId: string, blocks: Block[]): { blocks: Block[]; removed: number } {
+  if (!settingsStore.getSettings().ocrTrimRepeats) return { blocks, removed: 0 }
+  const existing = notesStore.getNote(noteId)
+  const tail = existing?.blocks ?? []
+  // The "text may be cut off" warning is not part of the page.
+  const [warning, rest] = blocks[0]?.type === 'paragraph' && blocks[0].tone === 'warning' ? [blocks[0], blocks.slice(1)] : [undefined, blocks]
+  const result = trimOverlap(tail, rest)
+  if (!result.removed) return { blocks, removed: 0 }
+  return { blocks: warning ? [warning, ...result.blocks] : result.blocks, removed: result.removed }
 }
 
 /** Placeholder in the capture's position: a stuck screenshot never blocks the ones behind it. */

@@ -41,7 +41,7 @@ export function sanitizeUiSettings(patch: Partial<AppSettings>): Partial<AppSett
   if ('editorFontSize' in out) out.editorFontSize = clampFontSize(out.editorFontSize)
   if ('editorFontFamily' in out) out.editorFontFamily = sanitizeFontFamily(out.editorFontFamily)
   if ('lastNoteId' in out) out.lastNoteId = typeof out.lastNoteId === 'string' && SAFE_ID.test(out.lastNoteId) ? out.lastNoteId : null
-  for (const key of ['compactGrid', 'autoCollapseSidebar', 'restoreLastNote', 'suggestClipboardOcr', 'ocrQueueEnabled'] as const) {
+  for (const key of ['compactGrid', 'autoCollapseSidebar', 'restoreLastNote', 'suggestClipboardOcr', 'ocrQueueEnabled', 'ocrTrimRepeats'] as const) {
     if (key in out) out[key] = out[key] === true
   }
   return out

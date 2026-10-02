@@ -32,6 +32,8 @@ export interface OcrJobResult {
   flagged?: boolean
   /** Human-readable routing notice ("Распознано: Groq · Gemini: лимит исчерпан"). */
   notice?: string
+  /** Lines of a looping AI answer that were cut (see repeatGuard). */
+  repeatsRemoved?: number
 }
 
 export interface OcrJob {

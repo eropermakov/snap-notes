@@ -9,7 +9,7 @@ Snap Notes — десктоп-приложение для Windows (Electron + Re
 - **Путь проекта:** `D:\SirVault\WeewScan 1`
 - **Репозиторий:** https://github.com/eropermakov/snap-notes (код запушен, история коммитов сохранена)
 - **Релизы:** https://github.com/eropermakov/snap-notes/releases — там же лежат `.exe`-установщики
-- **Текущая версия:** 1.7.0
+- **Текущая версия:** 1.7.1
 - **Язык интерфейса:** русский, везде
 
 ## Стек
@@ -80,6 +80,7 @@ npm run release       # собрать И опубликовать релиз н
 ### Фоновая очередь распознавания и папки (v1.7)
 - Захват только снимает bitmap, кладёт его во временный файл и ставит задание в очередь (`capturePipeline.acceptCapture`) — без ожидания ИИ. Ядро — `src/main/ocr/OCRQueueService.ts` (+ `jobStore.ts`: `userData/ocr-queue/<id>.json|png`, монотонный `sequenceNumber` в `state.json`), модель — `src/shared/ocrJob.ts` (статусы QUEUED/PROCESSING/READY/COMPLETED/FAILED/CANCELLED). Целевая заметка фиксируется при захвате.
 - Порядок: результаты буферизуются, в заметку фиксируются строго по `sequenceNumber` внутри заметки (`committableJobs`); параллелизм `ocrMaxConcurrent` 1–3 (по умолчанию 1). Провал после попыток → плейсхолдер с «Повторить» (`OcrSource.failed/jobId`), очередь не блокируется. После сбоя PROCESSING → QUEUED (`recoverOcrQueue`). Настройки: `ocrQueueEnabled`, `ocrMaxConcurrent`.
+- Повторы: `shared/repeatGuard.ts` — `collapseRunaway` (зациклившийся ответ ИИ: порог ≥6 одинаковых блоков, ≥8 строк таблицы, цикл 2–4 блока ×4) вызывается в `recognizeJob`, `trimOverlap` (текстовое перекрытие с концом предыдущего снимка, по границам слов) — в `commitJob`; запись идемпотентна (`sources[sourceId]` уже есть → пропуск). Настройка `ocrTrimRepeats`. Тесты: `tests/ocr/repeatGuard.test.ts`.
 - HUD: вид `queue` («Принято · в очереди: N», итог). Тесты: `tests/ocr/`, `tests/blocks/captureSession.test.ts`.
 - Папки: `shared/folders.ts` (валидация, `folderCounts`, drag-payload `application/x-snap-notes-ids`), `main/foldersStore.ts` (`folders.json`), `Note.folderId` (null — без папки; миграция в `noteMeta`), `notesStore.moveNotesToFolder` (не меняет `updatedAt`), экспорт кладёт заметки в подпапки. UI: `NotesSidebar` (раздел «Папки»), `FolderDialogs`. Тесты: `tests/folders/`.
 - Стеклянный сайдбар: токены `--sidebar-*`, `--app-bg` в `styles/index.css` (блок «Glass sidebar»), компонент `GlassSidebar` в `ui/Shell.tsx` (один `backdrop-filter` на контейнер рельса + панели), сплошной запасной вариант через `@supports not` и `prefers-reduced-transparency`. Контраст проверяет `tests/theme/sidebarGlass.test.ts`.
