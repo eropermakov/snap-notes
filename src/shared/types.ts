@@ -20,6 +20,8 @@ export interface Note {
   color: NoteColor
   /** Normalized lowercase tags without "#". */
   tags: string[]
+  /** Folder the note is in; null = no folder (shown in All notes only). */
+  folderId: string | null
   /** Created by a capture / quick note, not by the user: empty ones are cleaned up when left. */
   autoCreated?: boolean
   /** The user typed the title: it is never replaced automatically again. */
@@ -137,6 +139,10 @@ export interface AppSettings {
   /** Offer OCR when a new image appears in the clipboard. */
   suggestClipboardOcr: boolean
   ocrFeedback: OcrFeedback
+  /** Background OCR queue: off = captures are kept but not recognized until it is turned on. */
+  ocrQueueEnabled: boolean
+  /** Captures recognized at the same time (1–3). Results are still written in capture order. */
+  ocrMaxConcurrent: number
   /** '' = the app's default font. */
   editorFontFamily: string
   editorFontSize: number
@@ -198,6 +204,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lastNoteId: null,
   suggestClipboardOcr: false,
   ocrFeedback: 'visual',
+  ocrQueueEnabled: true,
+  ocrMaxConcurrent: 1,
   editorFontFamily: '',
   editorFontSize: 14,
   windowState: null,

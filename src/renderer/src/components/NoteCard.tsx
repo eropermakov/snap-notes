@@ -1,6 +1,7 @@
-import { memo, useMemo, type KeyboardEvent, type MouseEvent, type ReactElement } from 'react'
+import { memo, useMemo, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactElement } from 'react'
 import type { Note } from '@shared/types'
 import type { SearchResult } from '@shared/noteSearch'
+import { DRAG_MIME, encodeDragIds, idsForDrag } from '@shared/folders'
 import type { CardMetrics } from '@shared/cardLayout'
 import { useAppStore } from '../store/useAppStore'
 import { cn, DropdownMenu, IconButton, Menu, useContextMenu } from '../ui'
@@ -56,6 +57,12 @@ function NoteCardImpl({ note, listMode, metrics, compact, hit, onSelect }: Props
     // While notes are selected, a plain click keeps selecting (like Keep) instead of opening.
     else if (selectionActive) onSelect(note.id, { ctrl: true, shift: false })
     else openNote(note.id, query || undefined)
+  }
+
+  const onDragStart = (e: DragEvent): void => {
+    const selected = useAppStore.getState().selection.selected
+    e.dataTransfer.setData(DRAG_MIME, encodeDragIds(idsForDrag(note.id, selected)))
+    e.dataTransfer.effectAllowed = 'move'
   }
 
   const onKeyDown = (e: KeyboardEvent): void => {
@@ -142,6 +149,8 @@ function NoteCardImpl({ note, listMode, metrics, compact, hit, onSelect }: Props
           data-note-id={note.id}
           data-open={open}
           data-selected={selected}
+          draggable
+          onDragStart={onDragStart}
           onClick={activate}
           onKeyDown={onKeyDown}
           onContextMenu={onContextMenu}
@@ -193,6 +202,8 @@ function NoteCardImpl({ note, listMode, metrics, compact, hit, onSelect }: Props
         data-note-id={note.id}
         data-open={open}
         data-selected={selected}
+        draggable
+        onDragStart={onDragStart}
         onClick={activate}
         onKeyDown={onKeyDown}
         onContextMenu={onContextMenu}

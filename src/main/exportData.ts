@@ -3,7 +3,12 @@ import AdmZip from 'adm-zip'
 import { ExportResult, Note } from '../shared/types'
 import { htmlToPlainText } from '../shared/htmlText'
 
-export async function exportNotesToZip(win: BrowserWindow, notes: Note[]): Promise<ExportResult> {
+/** `folderName` puts notes into sub-folders of the archive, the same way they are organised in the app. */
+export async function exportNotesToZip(
+  win: BrowserWindow,
+  notes: Note[],
+  folderName: (folderId: string | null) => string | undefined = () => undefined
+): Promise<ExportResult> {
   const { canceled, filePath } = await dialog.showSaveDialog(win, {
     title: 'Экспорт заметок',
     defaultPath: `snap-notes-export-${new Date().toISOString().slice(0, 10)}.zip`,
@@ -21,10 +26,12 @@ export async function exportNotesToZip(win: BrowserWindow, notes: Note[]): Promi
     for (const note of notes) {
       const title = note.title.trim() || 'Без названия'
       const safeTitle = title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)
-      let filename = `${safeTitle}.txt`
+      const dir = folderName(note.folderId)?.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)
+      const prefix = dir ? `${dir}/` : ''
+      let filename = `${prefix}${safeTitle}.txt`
       let suffix = 2
       while (usedNames.has(filename)) {
-        filename = `${safeTitle} (${suffix}).txt`
+        filename = `${prefix}${safeTitle} (${suffix}).txt`
         suffix += 1
       }
       usedNames.add(filename)

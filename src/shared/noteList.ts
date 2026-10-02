@@ -56,14 +56,17 @@ export type CollectionFilter = 'all' | 'pinned' | 'favorites' | 'recent'
 export interface FilterOptions {
   filter: CollectionFilter
   tag?: string | null
+  /** Only notes in this folder. undefined / null = every note ("Все заметки"). */
+  folderId?: string | null
 }
 
 export function recentNotes(notes: readonly Note[], limit = RECENT_LIMIT): Note[] {
   return [...notes].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit)
 }
 
-export function filterNotes(notes: readonly Note[], { filter, tag }: FilterOptions): Note[] {
+export function filterNotes(notes: readonly Note[], { filter, tag, folderId }: FilterOptions): Note[] {
   let result: readonly Note[] = notes
+  if (folderId) result = result.filter((n) => n.folderId === folderId)
   if (filter === 'pinned') result = result.filter((n) => n.pinned)
   else if (filter === 'favorites') result = result.filter((n) => n.favorite)
   else if (filter === 'recent') result = recentNotes(result)

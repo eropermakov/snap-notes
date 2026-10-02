@@ -2,7 +2,7 @@ import type { ReactElement } from 'react'
 import type { Note } from '@shared/types'
 import { useAppStore } from '../../store/useAppStore'
 import { MenuItem, MenuLabel, MenuSeparator } from '../../ui'
-import { CopyIcon, DownloadIcon, DuplicateIcon, OpenIcon, PinIcon, SparkleIcon, StarIcon, TagIcon, TrashIcon, WindowIcon } from '../icons'
+import { CopyIcon, DownloadIcon, DuplicateIcon, FolderIcon, OpenIcon, PinIcon, SparkleIcon, StarIcon, TagIcon, TrashIcon, WindowIcon } from '../icons'
 import { formatAccelerator } from '../HotkeyRecorder'
 import { MenuColors } from './ColorPicker'
 
@@ -26,6 +26,7 @@ export default function NoteMenuItems({ note, showOpen = true, showFloating = tr
   const toggleFavorite = useAppStore((s) => s.toggleFavorite)
   const setColor = useAppStore((s) => s.setColor)
   const openTagEditor = useAppStore((s) => s.openTagEditor)
+  const openFolderDialog = useAppStore((s) => s.openFolderDialog)
   const duplicateNote = useAppStore((s) => s.duplicateNote)
   const openFloating = useAppStore((s) => s.openFloating)
   const deleteNote = useAppStore((s) => s.deleteNote)
@@ -59,6 +60,9 @@ export default function NoteMenuItems({ note, showOpen = true, showFloating = tr
       </MenuItem>
       <MenuLabel>Цвет</MenuLabel>
       <MenuColors value={note.color} onPick={(c) => void setColor(note.id, c)} />
+      <MenuItem icon={<FolderIcon />} onSelect={() => openFolderDialog({ type: 'move', ids: [note.id] })}>
+        В папку…
+      </MenuItem>
       <MenuItem icon={<TagIcon />} onSelect={() => openTagEditor([note.id])}>
         Теги…
       </MenuItem>

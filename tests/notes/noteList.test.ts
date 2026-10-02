@@ -85,13 +85,13 @@ describe('migration of old notes', () => {
   it('detects notes written before 1.6 and gives safe defaults', () => {
     const old = { id: 'x', title: 'T', body: '<p>a</p>', pinned: true, createdAt: 1, updatedAt: 2, deletedAt: null }
     expect(needsMetaMigration(old)).toBe(true)
-    expect(readNoteMeta(old)).toEqual({ favorite: false, color: 'default', tags: [] })
+    expect(readNoteMeta(old)).toEqual({ folderId: null, favorite: false, color: 'default', tags: [] })
   })
 
   it('keeps valid metadata and repairs invalid values', () => {
-    const stored = { favorite: true, color: 'teal', tags: ['#Работа', 'работа', '', 5], autoCreated: true, titleManual: true }
+    const stored = { folderId: null, favorite: true, color: 'teal', tags: ['#Работа', 'работа', '', 5], autoCreated: true, titleManual: true }
     expect(needsMetaMigration(stored)).toBe(false)
-    expect(readNoteMeta(stored)).toEqual({ favorite: true, color: 'teal', tags: ['работа'], autoCreated: true, titleManual: true })
-    expect(readNoteMeta({ favorite: 'yes', color: '#ff0000', tags: 'a' })).toEqual({ favorite: false, color: 'default', tags: [] })
+    expect(readNoteMeta(stored)).toEqual({ folderId: null, favorite: true, color: 'teal', tags: ['работа'], autoCreated: true, titleManual: true })
+    expect(readNoteMeta({ favorite: 'yes', color: '#ff0000', tags: 'a', folderId: '../x' })).toEqual({ folderId: null, favorite: false, color: 'default', tags: [] })
   })
 })

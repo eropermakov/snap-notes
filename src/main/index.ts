@@ -9,6 +9,7 @@ import { initFloatingNotes, setFloatingBackground } from './floatingNotes'
 import { markClipboardImageHandled, readClipboardPng, startClipboardWatch, stopClipboardWatch } from './clipboardOcr'
 import { registerIpcHandlers } from './ipc'
 import { initNotesStore, purgeExpiredTrash } from './notesStore'
+import { initFoldersStore } from './foldersStore'
 import { getSettings, updateSettings, runAiMigration } from './settingsStore'
 import { HOTKEY_KINDS, registerHotkeys, unregisterAllHotkeys, type HotkeyHandlers } from './hotkeys'
 import { createTray, destroyTray, isTrayActive } from './tray'
@@ -17,6 +18,8 @@ import {
   finishCaptureSession,
   getActiveNoteId,
   initCapturePipeline,
+  recoverOcrQueue,
+  getOcrQueue,
   runCapture,
   runImageOcr,
   runRepeatCapture,
@@ -203,6 +206,10 @@ async function handleSettingsChanged(
     setFloatingBackground(color)
   }
 
+  if (next.ocrQueueEnabled !== prev.ocrQueueEnabled) {
+    getOcrQueue()?.setPaused(!next.ocrQueueEnabled)
+  }
+
   if (next.suggestClipboardOcr !== prev.suggestClipboardOcr) {
     applyClipboardWatch(next)
   }
@@ -269,6 +276,7 @@ if (!gotLock) {
     })
 
     await initNotesStore()
+    await initFoldersStore()
     await initScreenshotCache()
 
     const system = createProviderSystem()
@@ -289,7 +297,7 @@ if (!gotLock) {
     attachWindowLifecycle(mainWindow)
     initQuickNote(preloadPath, backgroundColorForTheme(getSettings().theme))
     initFloatingNotes(preloadPath, iconPath, backgroundColorForTheme(getSettings().theme))
-    initCapturePipeline(() => mainWindow, system.recognition)
+    const ocrQueue = initCapturePipeline(() => mainWindow, system.recognition)
     initDocumentCapture(() => mainWindow, system.recognition)
     initLongScreenshot(() => mainWindow, system.recognition)
     initImageProtocol()
@@ -303,7 +311,9 @@ if (!gotLock) {
       },
       sessionNext: () => captureNextInSession(),
       sessionFinish: () => finishCaptureSession(),
-      ocrClipboard: () => void ocrClipboardImage()
+      ocrClipboard: () => void ocrClipboardImage(),
+      cancelJob: (jobId) => void ocrQueue.cancel(jobId),
+      retryFailed: () => void ocrQueue.retryFailed()
     })
     prewarmHud()
     prewarmQuickNote()
@@ -312,6 +322,7 @@ if (!gotLock) {
     ipcMain.handle(IPC.APP_CAPTURE_DOCUMENT, () => void runDocumentCapture(preloadPath))
 
     registerIpcHandlers({
+      ocrQueue,
       recognition: system.recognition,
       preloadPath,
       getMainWindow: () => mainWindow,
@@ -333,6 +344,10 @@ if (!gotLock) {
     applyHotkeys(settings)
     applyTray(settings)
     applyClipboardWatch(settings)
+    // Captures that were waiting when the app was last closed continue in the background.
+    void recoverOcrQueue().then((count) => {
+      if (count > 0) logEvent('ocr-queue', { recovered: count })
+    })
     syncAutoLaunch(settings.launchAtStartup, settings.minimizeToTray).catch((err) => {
       console.error('[auto-launch] initial sync failed', err)
     })

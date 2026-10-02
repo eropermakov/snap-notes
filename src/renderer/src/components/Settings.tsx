@@ -321,6 +321,33 @@ function HotkeysPage(): ReactElement | null {
             }
           />
           <SettingsRow
+            title="Распознавать в фоне"
+            description="Скриншоты встают в очередь и распознаются по порядку, пока вы продолжаете работу. Если выключить, снимки сохраняются, но обрабатываются только после включения."
+            control={
+              <Toggle
+                aria-label="Распознавать в фоне"
+                checked={settings.ocrQueueEnabled}
+                onChange={(checked) => void updateSettings({ ocrQueueEnabled: checked })}
+              />
+            }
+          />
+          <SettingsRow
+            title="Одновременных запросов к ИИ"
+            description="По умолчанию 1 — самый бережный к лимитам вариант. Текст в заметке в любом случае встаёт в порядке снимков."
+            control={
+              <Select
+                aria-label="Одновременных запросов к ИИ"
+                value={String(settings.ocrMaxConcurrent)}
+                onChange={(e) => void updateSettings({ ocrMaxConcurrent: Number(e.target.value) })}
+                wrapperClassName="w-24"
+              >
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+              </Select>
+            }
+          />
+          <SettingsRow
             title="Предлагать распознать картинку из буфера"
             description="Когда вы копируете изображение, появится маленькая подсказка. Для одной и той же картинки — только один раз."
             control={

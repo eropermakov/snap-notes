@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes, type MouseEvent, type ReactElement, type ReactNode } from 'react'
+import { forwardRef, type ButtonHTMLAttributes, type DragEvent, type MouseEvent, type ReactElement, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { cn, EASE_OUT } from './cn'
 import { Tooltip } from './Tooltip'
@@ -24,8 +24,26 @@ export function AppShell({
 }): ReactElement {
   const showSidebar = Boolean(sidebar) && sidebarOpen
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
-      {rail}
+    <div className="app-backdrop flex h-screen w-screen overflow-hidden">
+      <GlassSidebar>
+        {rail}
+        <AnimatePresence initial={false}>
+          {showSidebar && !sidebarOverlay && (
+            <motion.aside
+              key="sidebar"
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: sidebarWidth, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.18, ease: EASE_OUT }}
+              className="relative flex shrink-0 flex-col overflow-hidden"
+            >
+              <div className="flex h-full flex-col" style={{ width: sidebarWidth }}>
+                {sidebar}
+              </div>
+            </motion.aside>
+          )}
+        </AnimatePresence>
+      </GlassSidebar>
       <div className="relative flex min-w-0 flex-1">
         <AnimatePresence initial={false}>
           {showSidebar && sidebarOverlay && (
@@ -39,17 +57,14 @@ export function AppShell({
               onClick={onDismissSidebar}
             />
           )}
-          {showSidebar && (
+          {showSidebar && sidebarOverlay && (
             <motion.aside
-              key="sidebar"
-              initial={sidebarOverlay ? { x: -16, opacity: 0 } : { width: 0, opacity: 0 }}
-              animate={sidebarOverlay ? { x: 0, opacity: 1 } : { width: sidebarWidth, opacity: 1 }}
-              exit={sidebarOverlay ? { x: -16, opacity: 0 } : { width: 0, opacity: 0 }}
+              key="drawer"
+              initial={{ x: -16, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -16, opacity: 0 }}
               transition={{ duration: 0.18, ease: EASE_OUT }}
-              className={cn(
-                'flex shrink-0 flex-col overflow-hidden bg-sidebar',
-                sidebarOverlay ? 'absolute inset-y-0 left-0 z-40 border-r border-line shadow-popover' : 'relative'
-              )}
+              className="glass-sidebar glass-sidebar-drawer absolute inset-y-0 left-0 z-40 flex shrink-0 flex-col overflow-hidden shadow-popover"
             >
               <div className="flex h-full flex-col" style={{ width: sidebarWidth }}>
                 {sidebar}
@@ -57,7 +72,7 @@ export function AppShell({
             </motion.aside>
           )}
         </AnimatePresence>
-        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-tl-2xl border-l border-t border-line bg-canvas">
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-tl-2xl border-t border-line bg-canvas">
           {children}
         </main>
       </div>
@@ -65,9 +80,18 @@ export function AppShell({
   )
 }
 
+/**
+ * The one translucent surface behind the navigation rail and the context sidebar: a single backdrop blur on
+ * this container (never on items), a thin right border and a faint inner highlight. Colours, blur radius and
+ * the solid fallback (no backdrop-filter / reduced transparency) are the `sidebar.*` tokens in index.css.
+ */
+export function GlassSidebar({ children }: { children: ReactNode }): ReactElement {
+  return <div className="glass-sidebar flex shrink-0 border-r border-[var(--sidebar-border)]">{children}</div>
+}
+
 export function NavRail({ top, bottom }: { top: ReactNode; bottom: ReactNode }): ReactElement {
   return (
-    <nav aria-label="Разделы" className="flex w-14 shrink-0 flex-col items-center justify-between bg-sidebar pb-3 pt-2">
+    <nav aria-label="Разделы" className="flex w-14 shrink-0 flex-col items-center justify-between pb-3 pt-2">
       <div className="flex flex-col items-center gap-1">{top}</div>
       <div className="flex flex-col items-center gap-1">{bottom}</div>
     </nav>
@@ -95,7 +119,7 @@ export const NavRailItem = forwardRef<HTMLButtonElement, NavRailItemProps>(funct
         aria-current={active ? 'page' : undefined}
         className={cn(
           'relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors duration-fast ease-out',
-          active ? 'bg-active text-fg' : 'text-fg-secondary hover:bg-hover hover:text-fg',
+          active ? 'sidebar-item-active bg-active text-fg' : 'text-fg-secondary hover:bg-hover hover:text-fg',
           className
         )}
         {...rest}
@@ -119,7 +143,7 @@ export function SidebarHeader({ title, actions }: { title: ReactNode; actions?: 
 export function SidebarSection({ title, children, className }: { title?: ReactNode; children: ReactNode; className?: string }): ReactElement {
   return (
     <div className={cn('px-2 py-2', className)}>
-      {title && <div className="px-2 pb-1 pt-1 text-xs font-medium text-fg-muted">{title}</div>}
+      {title && <div className="px-2 pb-1 pt-1 text-xs font-medium tracking-wide text-fg-muted">{title}</div>}
       <div className="flex flex-col gap-px">{children}</div>
     </div>
   )
@@ -138,16 +162,25 @@ interface SidebarItemProps {
   actions?: ReactNode
   title?: string
   muted?: boolean
+  /** Something is being dragged over this row (folders accept dropped notes). */
+  dropActive?: boolean
+  onDragOver?: (e: DragEvent) => void
+  onDragLeave?: (e: DragEvent) => void
+  onDrop?: (e: DragEvent) => void
 }
 
-export function SidebarItem({ icon, label, active, count, trailing, onClick, onContextMenu, actions, title, muted }: SidebarItemProps): ReactElement {
+export function SidebarItem({ icon, label, active, count, trailing, onClick, onContextMenu, actions, title, muted, dropActive, onDragOver, onDragLeave, onDrop }: SidebarItemProps): ReactElement {
   return (
     <div
       className={cn(
         'group relative flex h-8 items-center rounded-lg transition-colors duration-fast ease-out',
-        active ? 'bg-active' : 'hover:bg-hover focus-within:bg-hover'
+        active ? 'sidebar-item-active bg-active' : 'hover:bg-hover focus-within:bg-hover',
+        dropActive && 'drop-target'
       )}
       onContextMenu={onContextMenu}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
     >
       <button
         type="button"
@@ -159,7 +192,7 @@ export function SidebarItem({ icon, label, active, count, trailing, onClick, onC
           active ? 'font-medium text-fg' : muted ? 'text-fg-secondary' : 'text-fg'
         )}
       >
-        {icon && <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center', active ? 'text-fg' : 'text-fg-secondary')}>{icon}</span>}
+        {icon && <span className={cn('sidebar-icon flex h-4 w-4 shrink-0 items-center justify-center', active ? 'text-fg' : 'text-fg-secondary')}>{icon}</span>}
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {count !== undefined && (
           <span className={cn('tabular shrink-0 text-xs text-fg-muted', Boolean(actions) && 'group-focus-within:opacity-0 group-hover:opacity-0')}>{count}</span>

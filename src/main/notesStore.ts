@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import { Note } from '../shared/types'
-import { addTags, isContentPatch, normalizeColor, normalizeTags, needsMetaMigration, readNoteMeta, removeTags, type NoteColor } from '../shared/noteMeta'
+import { addTags, isContentPatch, normalizeFolderId, normalizeColor, normalizeTags, needsMetaMigration, readNoteMeta, removeTags, type NoteColor } from '../shared/noteMeta'
 import { isDiscardableAutoNote } from '../shared/noteLifecycle'
 import { collectImageIds, rewriteImageRefs } from '../shared/imageRefs'
 import { looksLikeHtml, plainTextToHtml } from '../shared/htmlText'
@@ -66,7 +66,9 @@ function sanitizeSources(value: unknown): Record<string, OcrSource> {
       ...(str(s.method, 80) ? { method: str(s.method, 80) } : {}),
       ...(str(s.model, 120) ? { model: str(s.model, 120) } : {}),
       ...(str(s.mode, 40) ? { mode: str(s.mode, 40) } : {}),
-      ...(s.quality === 'HIGH' || s.quality === 'MEDIUM' || s.quality === 'LOW' ? { quality: s.quality } : {})
+      ...(s.quality === 'HIGH' || s.quality === 'MEDIUM' || s.quality === 'LOW' ? { quality: s.quality } : {}),
+      ...(str(s.jobId, 64) && /^[a-zA-Z0-9_-]+$/.test(str(s.jobId, 64) as string) ? { jobId: str(s.jobId, 64) } : {}),
+      ...(s.failed === true ? { failed: true } : {})
     }
     result[key] = source
   }
@@ -141,9 +143,10 @@ export async function initNotesStore(): Promise<void> {
   await sweepEmptyAutoNotes()
 }
 
-function readNoteMetaFields(parsed: Partial<Note>): Pick<Note, 'favorite' | 'color' | 'tags' | 'autoCreated' | 'titleManual'> {
+function readNoteMetaFields(parsed: Partial<Note>): Pick<Note, 'folderId' | 'favorite' | 'color' | 'tags' | 'autoCreated' | 'titleManual'> {
   const meta = readNoteMeta(parsed as Record<string, unknown>)
   return {
+    folderId: meta.folderId,
     favorite: meta.favorite,
     color: meta.color,
     tags: meta.tags,
@@ -190,6 +193,7 @@ export async function createNote(partial?: Partial<Note>): Promise<Note> {
     body: '',
     emoji: null,
     pinned: false,
+    folderId: null,
     favorite: false,
     color: 'default',
     tags: [],
@@ -200,6 +204,7 @@ export async function createNote(partial?: Partial<Note>): Promise<Note> {
   }
   note.color = normalizeColor(note.color)
   note.tags = normalizeTags(note.tags)
+  note.folderId = normalizeFolderId(note.folderId)
   if (note.body) note.body = sanitizeNoteHtml(note.body)
   const stored = withBlocks(note)
   cache.set(stored.id, stored)
@@ -221,6 +226,7 @@ export async function updateNote(id: string, patch: Partial<Note>, options: Upda
   if (rest.color !== undefined) updated.color = normalizeColor(rest.color)
   if (rest.tags !== undefined) updated.tags = normalizeTags(rest.tags)
   if (rest.favorite !== undefined) updated.favorite = rest.favorite === true
+  if (rest.folderId !== undefined) updated.folderId = normalizeFolderId(rest.folderId)
   if (rest.pinned !== undefined) updated.pinned = rest.pinned === true
   if (typeof rest.title === 'string') updated.title = rest.title.slice(0, 500)
   if (patchBlocks !== undefined) {
@@ -317,6 +323,7 @@ export async function duplicateNote(id: string): Promise<Note | null> {
       body,
       emoji: source.emoji,
       pinned: false,
+      folderId: source.folderId,
       favorite: false,
       color: source.color,
       tags: [...source.tags],
@@ -330,6 +337,40 @@ export async function duplicateNote(id: string): Promise<Note | null> {
   cache.set(copy.id, copy)
   await persist(copy)
   return copy
+}
+
+/**
+ * Moves notes into a folder (null = out of every folder). Returns the notes that really changed,
+ * with the folder each one came from, so the move can be undone. A move is organisation, not
+ * editing: it does not touch "last modified".
+ */
+export async function moveNotesToFolder(ids: string[], folderId: string | null): Promise<{ note: Note; from: string | null }[]> {
+  const target = normalizeFolderId(folderId)
+  const changed: { note: Note; from: string | null }[] = []
+  for (const id of ids) {
+    const existing = cache.get(id)
+    if (!existing || existing.folderId === target) continue
+    const updated = await updateNote(id, { folderId: target })
+    if (updated) changed.push({ note: updated, from: existing.folderId })
+  }
+  return changed
+}
+
+/** A folder was deleted: every note that pointed to it (also in the trash) is simply "without a folder". */
+export async function clearFolderReferences(folderId: string): Promise<Note[]> {
+  const cleared: Note[] = []
+  for (const note of Array.from(cache.values())) {
+    if (note.folderId !== folderId) continue
+    const updated: Note = { ...note, folderId: null }
+    cache.set(note.id, updated)
+    await persist(updated)
+    cleared.push(updated)
+  }
+  return cleared
+}
+
+export function noteIdsInFolder(folderId: string): string[] {
+  return Array.from(cache.values()).filter((n) => n.folderId === folderId && n.deletedAt === null).map((n) => n.id)
 }
 
 /** Removes an auto-created note that is still empty (nothing typed, no captures, no images). */
@@ -373,6 +414,17 @@ export async function insertAfterImage(
     ...(Object.keys(sources).length ? { sources } : {}),
     updatedAt: Date.now()
   }
+  cache.set(id, updated)
+  await persist(updated)
+  return updated
+}
+
+/** Replaces the metadata of one capture (a retried capture no longer has the "failed" mark). */
+export async function putSource(id: string, source: OcrSource): Promise<Note | null> {
+  const existing = cache.get(id)
+  if (!existing) return null
+  const sources = { ...(existing.sources ?? {}), ...sanitizeSources({ [source.id]: source }) }
+  const updated: Note = { ...existing, sources, updatedAt: Date.now() }
   cache.set(id, updated)
   await persist(updated)
   return updated

@@ -9,5 +9,5 @@ export { Menu, MenuItem, MenuSeparator, MenuLabel, DropdownMenu, useContextMenu,
 export { Modal, ConfirmDialog } from './Modal'
 export { Input, SearchInput, Select, NumberField, Toggle, SegmentedControl } from './Field'
 export { Page, PageHeader, Section, SettingsGroup, SettingsRow, EmptyState } from './Layout'
-export { AppShell, NavRail, NavRailItem, SidebarHeader, SidebarSection, SidebarItem } from './Shell'
+export { AppShell, GlassSidebar, NavRail, NavRailItem, SidebarHeader, SidebarSection, SidebarItem } from './Shell'
 export { ChoiceList } from './ChoiceList'

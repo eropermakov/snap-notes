@@ -9,6 +9,7 @@ export function note(patch: Partial<Note> = {}): Note {
     body: '',
     emoji: null,
     pinned: false,
+    folderId: null,
     favorite: false,
     color: 'default',
     tags: [],

@@ -25,6 +25,7 @@ import {
   ScanDocIcon,
   SearchIcon,
   SortIcon,
+  FolderIcon,
   StarIcon,
   TrashIcon,
   UndoIcon
@@ -205,6 +206,8 @@ function PaletteBody({ onClose }: { onClose: () => void }): ReactElement {
       { id: 'go-recent', group: 'Перейти', label: 'Недавние', icon: <ClockIcon />, run: () => s.setNotesFilter('recent') },
       { id: 'go-favorites', group: 'Перейти', label: 'Избранное', icon: <StarIcon />, run: () => s.setNotesFilter('favorites') },
       { id: 'go-pinned', group: 'Перейти', label: 'Закреплённые', icon: <PinIcon />, run: () => s.setNotesFilter('pinned') },
+      { id: 'new-folder', group: 'Действия', label: 'Новая папка', icon: <PlusIcon />, keywords: 'folder папка', run: () => s.openFolderDialog({ type: 'create' }) },
+      ...s.folders.map<Command>((f) => ({ id: `go-folder-${f.id}`, group: 'Папки', label: `Папка: ${f.name}`, icon: <FolderIcon />, keywords: 'folder папка', run: () => s.setActiveFolder(f.id) })),
       { id: 'go-trash', group: 'Перейти', label: 'Корзина', icon: <TrashIcon />, run: () => s.setNotesFilter('trash') },
       { id: 'go-help', group: 'Перейти', label: 'Справка', icon: <QuestionIcon />, run: s.openInstructions },
       ...sorts,
@@ -247,7 +250,7 @@ function PaletteBody({ onClose }: { onClose: () => void }): ReactElement {
     }
     return q ? [...noteCommands, ...filteredActions] : [...filteredActions.slice(0, 8), ...noteCommands, ...filteredActions.slice(8)]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debounced, s.notes, s.viewMode, s.sidebarOpen, s.drawerOpen, s.layoutNarrow, s.settings?.compactGrid, s.editorNoteId])
+  }, [debounced, s.notes, s.folders, s.viewMode, s.sidebarOpen, s.drawerOpen, s.layoutNarrow, s.settings?.compactGrid, s.editorNoteId])
 
   // While the user is still typing, the list shows the previous result instead of flickering.
   const pending = query.trim() !== debounced

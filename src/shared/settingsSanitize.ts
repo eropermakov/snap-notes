@@ -37,10 +37,11 @@ export function sanitizeUiSettings(patch: Partial<AppSettings>): Partial<AppSett
   if ('sortOrder' in out) out.sortOrder = normalizeSortOrder(out.sortOrder)
   if ('cardSize' in out && !CARD_SIZES.includes(out.cardSize as CardSize)) out.cardSize = 'medium'
   if ('ocrFeedback' in out && !FEEDBACK.includes(out.ocrFeedback as OcrFeedback)) out.ocrFeedback = 'visual'
+  if ('ocrMaxConcurrent' in out) out.ocrMaxConcurrent = Math.min(3, Math.max(1, Math.round(Number(out.ocrMaxConcurrent)) || 1))
   if ('editorFontSize' in out) out.editorFontSize = clampFontSize(out.editorFontSize)
   if ('editorFontFamily' in out) out.editorFontFamily = sanitizeFontFamily(out.editorFontFamily)
   if ('lastNoteId' in out) out.lastNoteId = typeof out.lastNoteId === 'string' && SAFE_ID.test(out.lastNoteId) ? out.lastNoteId : null
-  for (const key of ['compactGrid', 'autoCollapseSidebar', 'restoreLastNote', 'suggestClipboardOcr'] as const) {
+  for (const key of ['compactGrid', 'autoCollapseSidebar', 'restoreLastNote', 'suggestClipboardOcr', 'ocrQueueEnabled'] as const) {
     if (key in out) out[key] = out[key] === true
   }
   return out

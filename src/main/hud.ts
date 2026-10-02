@@ -12,6 +12,7 @@ import { loadRoute } from './windows'
 
 const AUTO_HIDE_MS = 5000
 const SUGGEST_HIDE_MS = 9000
+const FAILED_HIDE_MS = 12_000
 const MARGIN = 16
 const WIDTH = 360
 
@@ -21,6 +22,8 @@ export interface HudHandlers {
   sessionNext: () => void
   sessionFinish: () => void
   ocrClipboard: () => void
+  cancelJob: (jobId: string) => void
+  retryFailed: () => void
 }
 
 let win: BrowserWindow | null = null
@@ -92,7 +95,9 @@ function ensureWindow(): { win: BrowserWindow; ready: Promise<void> } {
 function scheduleHide(): void {
   if (hideTimer) clearTimeout(hideTimer)
   hideTimer = null
-  if (state.kind !== 'added' && state.kind !== 'message' && state.kind !== 'suggest') return
+  // The queue indicator stays while there is work; only its final states disappear by themselves.
+  const queueFinal = state.kind === 'queue' && (state.phase === 'done' || state.phase === 'failed')
+  if (state.kind !== 'added' && state.kind !== 'message' && state.kind !== 'suggest' && !queueFinal) return
   hideTimer = setTimeout(
     () => {
       if (hovering) {
@@ -102,7 +107,7 @@ function scheduleHide(): void {
       // In a session the HUD falls back to the session counter instead of disappearing.
       show(sessionState ? { kind: 'session', session: sessionState } : { kind: 'hidden' })
     },
-    state.kind === 'suggest' ? SUGGEST_HIDE_MS : AUTO_HIDE_MS
+    state.kind === 'suggest' ? SUGGEST_HIDE_MS : state.kind === 'queue' && state.phase === 'failed' ? FAILED_HIDE_MS : AUTO_HIDE_MS
   )
 }
 
@@ -170,6 +175,13 @@ export function initHud(preloadPath: string, actions: HudHandlers): void {
       case 'ocrClipboard':
         hide()
         handlers?.ocrClipboard()
+        break
+      case 'cancelJob':
+        if (typeof action.jobId === 'string') handlers?.cancelJob(action.jobId)
+        break
+      case 'retryFailed':
+        hide()
+        handlers?.retryFailed()
         break
       case 'sessionNext':
         handlers?.sessionNext()

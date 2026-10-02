@@ -33,12 +33,13 @@ export function useVisibleNotes(filterOverride?: NotesFilter): VisibleNotes {
   const notes = useAppStore((s) => s.notes)
   const storeFilter = useAppStore((s) => s.notesFilter)
   const tag = useAppStore((s) => s.tagFilter)
+  const folderId = useAppStore((s) => s.activeFolderId)
   const sort: SortOrder = useAppStore((s) => s.settings?.sortOrder ?? 'modified')
   const query = useDebouncedQuery()
   const filter = filterOverride ?? storeFilter
 
   return useMemo(() => {
-    const collection = filterNotes(notes, { filter: filter === 'trash' ? 'all' : filter, tag })
+    const collection = filterNotes(notes, { filter: filter === 'trash' ? 'all' : filter, tag, folderId })
     if (!query) {
       return { notes: sortNotes(collection, filter === 'recent' ? 'modified' : sort), hits: new Map(), query: '', searching: false }
     }
@@ -51,7 +52,7 @@ export function useVisibleNotes(filterOverride?: NotesFilter): VisibleNotes {
     const ordered = results.map((r) => byId.get(r.id)).filter((n): n is Note => Boolean(n))
     const pinned = ordered.filter((n) => n.pinned)
     return { notes: [...pinned, ...ordered.filter((n) => !n.pinned)], hits, query, searching: true }
-  }, [notes, filter, tag, sort, query])
+  }, [notes, filter, tag, folderId, sort, query])
 }
 
 /** Search across every note (command palette), ignoring the current collection. */

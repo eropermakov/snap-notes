@@ -29,6 +29,8 @@ export interface CaptureOptions {
   windowInfo?: Promise<ForegroundWindowInfo>
   /** Split very tall images (scrolling capture) into parts recognized one by one. */
   splitTall?: boolean
+  /** Use this id for the capture (OCR queue jobs: Undo finds the blocks by it). */
+  sourceId?: string
   /** Progress callback for multi-part recognition. */
   onProgress?: (done: number, total: number) => void
 }
@@ -61,7 +63,7 @@ export function outputToItems(output: RecognitionOutput): unknown[] {
  */
 export async function recognizeCapture(options: CaptureOptions): Promise<CaptureResult> {
   const { png, noteId, recognition } = options
-  const sourceId = newSourceId()
+  const sourceId = options.sourceId ?? newSourceId()
   const parts = options.splitTall ? splitAtQuietRows(png) : [png]
 
   const blocks: Block[] = []

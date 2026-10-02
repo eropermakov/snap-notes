@@ -27,6 +27,23 @@ export type HudState =
       sound?: boolean
     }
   | { kind: 'suggest'; text: string }
+  /**
+   * Background OCR queue. `captured`: a screenshot was accepted ("Принято · в очереди: 3"); `processing`:
+   * one calm progress line for the whole run; `done` / `failed`: the run is finished.
+   */
+  | {
+      kind: 'queue'
+      phase: 'captured' | 'processing' | 'done' | 'failed'
+      text: string
+      detail?: string
+      /** Newest accepted capture: lets the notice cancel it while it is still waiting. */
+      jobId?: string
+      noteId?: string
+      progress?: { done: number; total: number }
+      failed?: number
+      sound?: boolean
+      session?: HudSession
+    }
   | { kind: 'message'; tone: 'warning' | 'error'; text: string; session?: HudSession }
   | { kind: 'session'; session: HudSession }
   | { kind: 'pick'; requestId: string; notes: HudPickNote[] }
@@ -35,6 +52,8 @@ export type HudAction =
   | { type: 'undo'; noteId: string; sourceId: string }
   | { type: 'open'; noteId: string }
   | { type: 'ocrClipboard' }
+  | { type: 'cancelJob'; jobId: string }
+  | { type: 'retryFailed' }
   | { type: 'sessionNext' }
   | { type: 'sessionFinish' }
   | { type: 'pick'; requestId: string; choice: string | null }

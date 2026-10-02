@@ -16,17 +16,20 @@ import { isOpenableLink } from '../shared/textTools'
 import { normalizeColor, normalizeTags } from '../shared/noteMeta'
 import { broadcastToNoteWindows } from './noteWindows'
 import { asPngBuffer, recognizeNoteImage } from './imageOcr'
-import { discardEmptyAutoNote, isNoteProcessing, runImageOcr, runRepeatCapture, undoLastCapture } from './capturePipeline'
+import { discardEmptyAutoNote, isNoteProcessing, runImageOcr, runRepeatCapture, setActiveFolderId, undoLastCapture } from './capturePipeline'
+import { createFolder, getFolder, listFolders, removeFolder, renameFolder, resetFolders } from './foldersStore'
 import { cleanupSelection } from './noteActions'
 import { applyRetry, discardRetry, listRetryProviders, retrySource } from './retryOcr'
 import { closeFloatingNote, openFloatingNote, setWindowAlwaysOnTop } from './floatingNotes'
 import { closeQuickNote, saveQuickNote } from './quickNote'
 import { markClipboardImageHandled, readClipboardPng } from './clipboardOcr'
 import type { RecognitionService } from './providers/recognition'
+import type { OCRQueueService } from './ocr/OCRQueueService'
 import type { ProviderId } from '../shared/providers'
 import { AppSettings, HotkeyRegistrationResult, Note, StorageStats } from '../shared/types'
 
 export interface IpcContext {
+  ocrQueue: OCRQueueService
   getMainWindow: () => BrowserWindow | null
   setActiveNoteId: (id: string | null) => void
   onSettingsChanged: (next: AppSettings, prev: AppSettings) => Promise<HotkeyRegistrationResult | null>
@@ -51,6 +54,10 @@ function pickEditable(patch: unknown): Partial<Note> | null {
   return out
 }
 
+function folderNameOf(folderId: string | null): string | undefined {
+  return getFolder(folderId)?.name
+}
+
 function idList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string').slice(0, 5000) : []
 }
@@ -58,7 +65,10 @@ function idList(value: unknown): string[] {
 export function registerIpcHandlers(ctx: IpcContext): void {
   ipcMain.handle(IPC.NOTES_LIST, () => notesStore.listNotes())
 
-  ipcMain.handle(IPC.NOTES_CREATE, async () => notesStore.createNote())
+  ipcMain.handle(IPC.NOTES_CREATE, async (_e, options?: { folderId?: unknown }) => {
+    const folderId = typeof options?.folderId === 'string' && getFolder(options.folderId) ? options.folderId : null
+    return notesStore.createNote({ folderId })
+  })
 
   ipcMain.handle(IPC.NOTES_UPDATE, async (e, id: string, patch: unknown) => {
     const picked = typeof id === 'string' ? pickEditable(patch) : null
@@ -141,7 +151,7 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     if (!win) return { ok: false, message: 'Окно приложения недоступно' }
     const notes = idList(ids).map((id) => notesStore.getNote(id)).filter((n): n is Note => Boolean(n))
     if (notes.length === 0) return { ok: false, message: 'Нет заметок для экспорта' }
-    return exportNotesToZip(win, notes)
+    return exportNotesToZip(win, notes, folderNameOf)
   })
 
   ipcMain.handle(IPC.NOTES_OPEN_FLOATING, (_e, id: string) => ({ ok: typeof id === 'string' && openFloatingNote(id) }))
@@ -213,7 +223,7 @@ export function registerIpcHandlers(ctx: IpcContext): void {
   ipcMain.handle(IPC.SETTINGS_EXPORT_NOTES, async () => {
     const win = ctx.getMainWindow()
     if (!win) return { ok: false, message: 'Окно приложения недоступно' }
-    return exportNotesToZip(win, notesStore.listNotes())
+    return exportNotesToZip(win, notesStore.listNotes(), folderNameOf)
   })
 
   ipcMain.handle(IPC.SETTINGS_EXPORT_NOTES_DOCX, async () => {
@@ -225,6 +235,7 @@ export function registerIpcHandlers(ctx: IpcContext): void {
   ipcMain.handle(IPC.SETTINGS_RESET_ALL, async () => {
     const prev = settingsStore.getSettings()
     await notesStore.resetAllNotes()
+    await resetFolders()
     await screenshotCache.clearCache()
     await ctx.resetProviders()
     const next = settingsStore.resetSettings()
@@ -351,6 +362,60 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     if (updated) broadcastToNoteWindows(IPC.ON_NOTE_UPDATED, updated)
     return updated
   })
+
+  // ----- folders -----
+  const foldersChanged = (except?: Electron.WebContents): void => broadcastToNoteWindows(IPC.ON_FOLDERS_CHANGED, listFolders(), except)
+
+  ipcMain.handle(IPC.FOLDERS_LIST, () => listFolders())
+
+  ipcMain.handle(IPC.FOLDERS_CREATE, async (e, name: unknown) => {
+    const result = await createFolder(name)
+    if (result.ok) foldersChanged(e.sender)
+    return { ...result, folders: listFolders() }
+  })
+
+  ipcMain.handle(IPC.FOLDERS_RENAME, async (e, id: unknown, name: unknown) => {
+    const result = typeof id === 'string' ? await renameFolder(id, name) : { ok: false as const, error: 'Папка не найдена' }
+    if (result.ok) foldersChanged(e.sender)
+    return { ...result, folders: listFolders() }
+  })
+
+  // Deleting a folder never deletes notes by itself: by default they just lose the folder.
+  // Mode "trash" additionally sends the notes of that folder to the trash (still restorable).
+  ipcMain.handle(IPC.FOLDERS_DELETE, async (e, id: unknown, mode: unknown) => {
+    if (typeof id !== 'string' || !getFolder(id)) return { ok: false, folders: listFolders(), trashed: [] as string[], unfiled: [] as string[] }
+    let trashed: string[] = []
+    if (mode === 'trash') {
+      trashed = await notesStore.bulkSoftDelete(notesStore.noteIdsInFolder(id))
+      for (const noteId of trashed) {
+        broadcastToNoteWindows(IPC.ON_NOTE_DELETED, noteId, e.sender)
+        closeFloatingNote(noteId)
+      }
+    }
+    const cleared = await notesStore.clearFolderReferences(id)
+    for (const note of cleared) if (note.deletedAt === null) broadcastToNoteWindows(IPC.ON_NOTE_UPDATED, note, e.sender)
+    await removeFolder(id)
+    setActiveFolderId(null)
+    foldersChanged(e.sender)
+    return { ok: true, folders: listFolders(), trashed, unfiled: cleared.filter((n) => n.deletedAt === null).map((n) => n.id) }
+  })
+
+  // Moving between folders returns where each note came from, so the UI can offer "Undo".
+  ipcMain.handle(IPC.NOTES_MOVE, async (e, ids: unknown, folderId: unknown) => {
+    const target = typeof folderId === 'string' && getFolder(folderId) ? folderId : null
+    if (typeof folderId === 'string' && !target) return { ok: false, moved: [] as { id: string; from: string | null }[] }
+    const changed = await notesStore.moveNotesToFolder(idList(ids), target)
+    for (const { note } of changed) broadcastToNoteWindows(IPC.ON_NOTE_UPDATED, note, e.sender)
+    return { ok: true, moved: changed.map(({ note, from }) => ({ id: note.id, from })), notes: changed.map(({ note }) => note) }
+  })
+
+  ipcMain.on(IPC.NOTES_SET_ACTIVE_FOLDER, (_e, id: unknown) => setActiveFolderId(typeof id === 'string' && getFolder(id) ? id : null))
+
+  // ----- OCR queue -----
+  ipcMain.handle(IPC.OCR_QUEUE_STATE, () => ctx.ocrQueue.getQueueState())
+  ipcMain.handle(IPC.OCR_RETRY_JOB, (_e, jobId: unknown) => (typeof jobId === 'string' ? ctx.ocrQueue.retry(jobId) : false))
+  ipcMain.handle(IPC.OCR_RETRY_FAILED, () => ctx.ocrQueue.retryFailed())
+  ipcMain.handle(IPC.OCR_CANCEL_JOB, (_e, jobId: unknown) => (typeof jobId === 'string' ? ctx.ocrQueue.cancel(jobId) : false))
 
   // ----- windows -----
   ipcMain.handle(IPC.WINDOW_SET_ALWAYS_ON_TOP, (e, on: boolean) => {

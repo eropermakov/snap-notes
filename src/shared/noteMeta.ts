@@ -21,6 +21,13 @@ export const NOTE_COLOR_LABELS: Record<NoteColor, string> = {
 export const MAX_TAGS_PER_NOTE = 20
 export const MAX_TAG_LENGTH = 32
 
+const SAFE_FOLDER_ID = /^[a-zA-Z0-9_-]{1,64}$/
+
+/** A folder reference from disk / IPC: a safe id, or null (no folder). */
+export function normalizeFolderId(value: unknown): string | null {
+  return typeof value === 'string' && SAFE_FOLDER_ID.test(value) ? value : null
+}
+
 export function normalizeColor(value: unknown): NoteColor {
   return typeof value === 'string' && (NOTE_COLORS as readonly string[]).includes(value) ? (value as NoteColor) : 'default'
 }
@@ -70,6 +77,7 @@ export function removeTags(current: string[], remove: string[]): string[] {
 }
 
 export interface NoteMeta {
+  folderId: string | null
   favorite: boolean
   color: NoteColor
   tags: string[]
@@ -79,12 +87,13 @@ export interface NoteMeta {
 
 /** True when a stored note predates 1.6 (lacks the metadata fields) and must be rewritten. */
 export function needsMetaMigration(stored: Record<string, unknown>): boolean {
-  return typeof stored.favorite !== 'boolean' || typeof stored.color !== 'string' || !Array.isArray(stored.tags)
+  return typeof stored.favorite !== 'boolean' || typeof stored.color !== 'string' || !Array.isArray(stored.tags) || !('folderId' in stored)
 }
 
 /** Safe defaults for old notes; valid values of new notes are kept (and re-normalized). */
 export function readNoteMeta(stored: Record<string, unknown>): NoteMeta {
   return {
+    folderId: normalizeFolderId(stored.folderId),
     favorite: stored.favorite === true,
     color: normalizeColor(stored.color),
     tags: normalizeTags(stored.tags),

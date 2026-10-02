@@ -9,7 +9,7 @@ Snap Notes — десктоп-приложение для Windows (Electron + Re
 - **Путь проекта:** `D:\SirVault\WeewScan 1`
 - **Репозиторий:** https://github.com/eropermakov/snap-notes (код запушен, история коммитов сохранена)
 - **Релизы:** https://github.com/eropermakov/snap-notes/releases — там же лежат `.exe`-установщики
-- **Текущая версия:** 1.6.0
+- **Текущая версия:** 1.7.0
 - **Язык интерфейса:** русский, везде
 
 ## Стек
@@ -76,6 +76,13 @@ npm run release       # собрать И опубликовать релиз н
 - Main: `noteWindows.ts` (рассылка изменений во все окна заметок), `floatingNotes.ts`, `quickNote.ts`, `windowState.ts`, `lastCapture.ts`, `clipboardOcr.ts`, `imageOcr.ts`, `retryOcr.ts` (новый результат держится в памяти до «Заменить»), `capturePipeline.ts` (`runRepeatCapture`, `runImageOcr`, `undoLastCapture`, удаление пустых автозаметок). Роуты окна: `#quick`, `#note/<id>`.
 - Renderer: поиск через `hooks/useVisibleNotes.ts` (debounce 200 мс, один индекс на окно), редактор — `NoteEditor.tsx` + `RichTextEditor.tsx` + `components/editor/` (`textCommands`, `LinkTools`, `CollapseTools`, `RetryModal`, `searchHighlight`). Свёрнутые блоки — состояние только интерфейса (localStorage), в заметку не пишутся.
 - Живая проверка: `electron . --user-data-dir=<папка> --remote-debugging-port=9333` и CDP (см. раздел про изолированный профиль выше). Системный буфер обмена в такой сессии может быть недоступен — тогда проверяются только тесты и путь «нет изображения/текста».
+
+### Фоновая очередь распознавания и папки (v1.7)
+- Захват только снимает bitmap, кладёт его во временный файл и ставит задание в очередь (`capturePipeline.acceptCapture`) — без ожидания ИИ. Ядро — `src/main/ocr/OCRQueueService.ts` (+ `jobStore.ts`: `userData/ocr-queue/<id>.json|png`, монотонный `sequenceNumber` в `state.json`), модель — `src/shared/ocrJob.ts` (статусы QUEUED/PROCESSING/READY/COMPLETED/FAILED/CANCELLED). Целевая заметка фиксируется при захвате.
+- Порядок: результаты буферизуются, в заметку фиксируются строго по `sequenceNumber` внутри заметки (`committableJobs`); параллелизм `ocrMaxConcurrent` 1–3 (по умолчанию 1). Провал после попыток → плейсхолдер с «Повторить» (`OcrSource.failed/jobId`), очередь не блокируется. После сбоя PROCESSING → QUEUED (`recoverOcrQueue`). Настройки: `ocrQueueEnabled`, `ocrMaxConcurrent`.
+- HUD: вид `queue` («Принято · в очереди: N», итог). Тесты: `tests/ocr/`, `tests/blocks/captureSession.test.ts`.
+- Папки: `shared/folders.ts` (валидация, `folderCounts`, drag-payload `application/x-snap-notes-ids`), `main/foldersStore.ts` (`folders.json`), `Note.folderId` (null — без папки; миграция в `noteMeta`), `notesStore.moveNotesToFolder` (не меняет `updatedAt`), экспорт кладёт заметки в подпапки. UI: `NotesSidebar` (раздел «Папки»), `FolderDialogs`. Тесты: `tests/folders/`.
+- Стеклянный сайдбар: токены `--sidebar-*`, `--app-bg` в `styles/index.css` (блок «Glass sidebar»), компонент `GlassSidebar` в `ui/Shell.tsx` (один `backdrop-filter` на контейнер рельса + панели), сплошной запасной вариант через `@supports not` и `prefers-reduced-transparency`. Контраст проверяет `tests/theme/sidebarGlass.test.ts`.
 
 ### Блочный формат заметок (v1.4)
 - `src/shared/blocks.ts` — типы блоков, `htmlToBlocks`/`blocksToHtml` (круговой обмен с сохранением `data-block`/`data-src`), санитайзинг inline-HTML; `blockExport.ts` — Markdown / «для AI» / текст / rich HTML / TSV / CSV

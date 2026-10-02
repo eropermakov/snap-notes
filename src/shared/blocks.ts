@@ -56,6 +56,10 @@ export interface OcrSource {
   mode?: string
   /** Normalized recognition quality, present only when the recognizer reported real confidences. */
   quality?: 'HIGH' | 'MEDIUM' | 'LOW'
+  /** The OCR queue job that produced (or is going to produce) this fragment. */
+  jobId?: string
+  /** Recognition failed for this capture: the fragment is a placeholder with a "Retry" button. */
+  failed?: boolean
 }
 
 // ---------------------------------------------------------------------------------------------

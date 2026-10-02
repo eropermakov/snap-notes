@@ -50,7 +50,7 @@ export default function CaptureHud(): ReactElement {
     void window.api.settings.get().then((s) => document.documentElement.setAttribute('data-theme', s.theme))
     const off = window.api.hud.onState((next) => {
       setState(next)
-      if (next.kind === 'added' && next.sound) playSoftChime()
+      if ((next.kind === 'added' || next.kind === 'queue') && next.sound) playSoftChime()
       // Theme may have changed since the HUD window was created.
       void window.api.settings.get().then((s) => document.documentElement.setAttribute('data-theme', s.theme))
     })
@@ -116,6 +116,51 @@ export default function CaptureHud(): ReactElement {
                 Открыть заметку
               </Button>
             </div>
+          </div>
+        )}
+
+        {state.kind === 'queue' && (
+          <div>
+            <div className="flex items-start gap-2.5">
+              <span className={cn('mt-0.5 shrink-0', state.phase === 'failed' ? 'text-warning' : state.phase === 'processing' ? 'text-accent' : 'text-success')}>
+                {state.phase === 'processing' ? (
+                  <Spinner className="h-4 w-4" />
+                ) : state.phase === 'failed' ? (
+                  <AlertTriangleIcon className="h-4 w-4" />
+                ) : (
+                  <CheckIcon className="h-4 w-4" />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-base">{state.text}</p>
+                {state.detail && <p className="mt-0.5 line-clamp-2 text-sm text-fg-secondary">{state.detail}</p>}
+              </div>
+              {(state.phase === 'done' || state.phase === 'failed') && <DismissButton />}
+            </div>
+            {state.phase === 'processing' && state.progress && state.progress.total > 1 && (
+              <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={state.progress.total} aria-valuenow={state.progress.done}>
+                <div className="h-full rounded-full bg-accent transition-[width] duration-slow ease-out" style={{ width: `${Math.round((state.progress.done / state.progress.total) * 100)}%` }} />
+              </div>
+            )}
+            {(state.phase === 'captured' && state.jobId) || state.phase === 'done' || state.phase === 'failed' ? (
+              <div className="mt-2.5 flex justify-end gap-1.5">
+                {state.phase === 'captured' && state.jobId && (
+                  <Button size="sm" variant="ghost" onClick={() => window.api.hud.action({ type: 'cancelJob', jobId: state.jobId! })}>
+                    Отменить
+                  </Button>
+                )}
+                {state.phase === 'failed' && (
+                  <Button size="sm" variant="ghost" onClick={() => window.api.hud.action({ type: 'retryFailed' })}>
+                    Повторить
+                  </Button>
+                )}
+                {(state.phase === 'done' || state.phase === 'failed') && state.noteId && (
+                  <Button size="sm" variant="secondary" onClick={() => window.api.hud.action({ type: 'open', noteId: state.noteId! })}>
+                    Открыть
+                  </Button>
+                )}
+              </div>
+            ) : null}
           </div>
         )}
 

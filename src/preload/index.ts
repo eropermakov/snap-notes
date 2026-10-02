@@ -4,6 +4,10 @@ import { IPC } from '../shared/ipc'
 import type { ActivitySummary, AiSettings, ApiKeyProviderId, ProviderId, ProviderPublicState } from '../shared/providers'
 import type { NoteColor } from '../shared/noteMeta'
 import type { PickedImage, RetryProvider, RetryResult } from '../shared/retry'
+import type { OcrQueueState } from '../shared/ocrJob'
+import type { Folder } from '../shared/folders'
+
+export type FolderResponse = { ok: true; folder: Folder; folders: Folder[] } | { ok: false; error: string; folders: Folder[] }
 import type { HudAction, HudState } from '../shared/hud'
 import type {
   ApiKeyTestResult,
@@ -64,13 +68,18 @@ interface OverlayRect {
 const api = {
   notes: {
     list: (): Promise<Note[]> => ipcRenderer.invoke(IPC.NOTES_LIST),
-    create: (): Promise<Note> => ipcRenderer.invoke(IPC.NOTES_CREATE),
+    create: (options?: { folderId?: string | null }): Promise<Note> => ipcRenderer.invoke(IPC.NOTES_CREATE, options),
     update: (id: string, patch: Partial<Note>): Promise<Note | null> =>
       ipcRenderer.invoke(IPC.NOTES_UPDATE, id, patch),
     bulkUpdate: (ids: string[], op: BulkNoteOp): Promise<Note[]> => ipcRenderer.invoke(IPC.NOTES_BULK_UPDATE, ids, op),
     /** Moves notes to the trash (never a permanent delete). Resolves with the ids that were moved. */
     bulkDelete: (ids: string[]): Promise<string[]> => ipcRenderer.invoke(IPC.NOTES_BULK_DELETE, ids),
     bulkRestore: (ids: string[]): Promise<Note[]> => ipcRenderer.invoke(IPC.NOTES_BULK_RESTORE, ids),
+    /** Moves notes into a folder (null = out of every folder); resolves with where each one came from. */
+    move: (ids: string[], folderId: string | null): Promise<{ ok: boolean; moved: { id: string; from: string | null }[]; notes?: Note[] }> =>
+      ipcRenderer.invoke(IPC.NOTES_MOVE, ids, folderId),
+    /** The folder open in the UI: notes made by a capture are created there. */
+    setActiveFolder: (id: string | null): void => ipcRenderer.send(IPC.NOTES_SET_ACTIVE_FOLDER, id),
     duplicate: (id: string): Promise<Note | null> => ipcRenderer.invoke(IPC.NOTES_DUPLICATE, id),
     exportMany: (ids: string[]): Promise<ExportResult> => ipcRenderer.invoke(IPC.NOTES_EXPORT_MANY, ids),
     openFloating: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(IPC.NOTES_OPEN_FLOATING, id),
@@ -199,6 +208,32 @@ const api = {
       const listener = (_e: unknown, states: ProviderPublicState[]): void => cb(states)
       ipcRenderer.on(IPC.ON_PROVIDERS_CHANGED, listener)
       return () => ipcRenderer.removeListener(IPC.ON_PROVIDERS_CHANGED, listener)
+    }
+  },
+  folders: {
+    list: (): Promise<Folder[]> => ipcRenderer.invoke(IPC.FOLDERS_LIST),
+    create: (name: string): Promise<FolderResponse> => ipcRenderer.invoke(IPC.FOLDERS_CREATE, name),
+    rename: (id: string, name: string): Promise<FolderResponse> => ipcRenderer.invoke(IPC.FOLDERS_RENAME, id, name),
+    /** Mode "unfile" (default): the notes stay, without a folder. "trash": the notes of the folder go to the trash too. */
+    remove: (id: string, mode: 'unfile' | 'trash'): Promise<{ ok: boolean; folders: Folder[]; trashed: string[]; unfiled: string[] }> =>
+      ipcRenderer.invoke(IPC.FOLDERS_DELETE, id, mode),
+    onChanged: (cb: (folders: Folder[]) => void): Unsubscribe => {
+      const listener = (_e: unknown, folders: Folder[]): void => cb(folders)
+      ipcRenderer.on(IPC.ON_FOLDERS_CHANGED, listener)
+      return () => ipcRenderer.removeListener(IPC.ON_FOLDERS_CHANGED, listener)
+    }
+  },
+  ocr: {
+    /** Captures waiting / being recognized in the background. */
+    getState: (): Promise<OcrQueueState> => ipcRenderer.invoke(IPC.OCR_QUEUE_STATE),
+    /** "Повторить" on a fragment that could not be recognized. */
+    retryJob: (jobId: string): Promise<boolean> => ipcRenderer.invoke(IPC.OCR_RETRY_JOB, jobId),
+    retryFailed: (): Promise<number> => ipcRenderer.invoke(IPC.OCR_RETRY_FAILED),
+    cancelJob: (jobId: string): Promise<boolean> => ipcRenderer.invoke(IPC.OCR_CANCEL_JOB, jobId),
+    onState: (cb: (state: OcrQueueState) => void): Unsubscribe => {
+      const listener = (_e: unknown, state: OcrQueueState): void => cb(state)
+      ipcRenderer.on(IPC.ON_OCR_QUEUE, listener)
+      return () => ipcRenderer.removeListener(IPC.ON_OCR_QUEUE, listener)
     }
   },
   capture: {

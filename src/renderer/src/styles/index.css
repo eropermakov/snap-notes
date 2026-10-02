@@ -140,6 +140,156 @@
   --focus-ring: color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
+/* ---------- Glass sidebar ----------
+ * Two visual levels: the app background (a quiet base with a very soft ambient glow) and, over it, one
+ * translucent surface for the navigation rail + sidebar with a single backdrop blur. Everything inside
+ * only uses transparent backgrounds. The workspace, cards and the editor stay solid and calm.
+ * Text always wins over transparency: the contrast of every text token on the worst-case backdrop is
+ * checked in tests/theme/sidebarGlass.test.ts, and the sidebar falls back to a solid colour without blur.
+ */
+:root,
+[data-theme$='-light'] {
+  --app-bg: #eef0f2;
+  --app-glow-a: color-mix(in srgb, var(--accent) 9%, transparent);
+  --app-glow-b: color-mix(in srgb, var(--accent) 5%, transparent);
+
+  --sidebar-bg: rgba(248, 249, 251, 0.75);
+  --sidebar-bg-top: rgba(250, 251, 252, 0.78);
+  --sidebar-bg-bottom: rgba(244, 246, 248, 0.74);
+  --sidebar-bg-drawer: rgba(248, 249, 251, 0.9);
+  --sidebar-bg-solid: #f4f5f7;
+  --sidebar-blur: 18px;
+  --sidebar-border: rgba(0, 0, 0, 0.07);
+  --sidebar-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.5);
+  --sidebar-divider: rgba(0, 0, 0, 0.06);
+  --sidebar-item-hover: rgba(0, 0, 0, 0.045);
+  --sidebar-item-active: rgba(0, 0, 0, 0.08);
+  --sidebar-text: rgba(18, 20, 24, 0.94);
+  --sidebar-text-secondary: rgba(44, 50, 60, 0.9);
+  --sidebar-text-muted: rgba(64, 72, 84, 0.9);
+  --sidebar-icon: rgba(40, 46, 56, 0.74);
+  --sidebar-icon-active: rgba(18, 20, 24, 0.96);
+  --sidebar-input-bg: rgba(0, 0, 0, 0.04);
+  --sidebar-input-border: rgba(0, 0, 0, 0.08);
+  --sidebar-input-focus-bg: rgba(255, 255, 255, 0.7);
+  --sidebar-scrollbar: rgba(0, 0, 0, 0.14);
+  --sidebar-scrollbar-hover: rgba(0, 0, 0, 0.26);
+}
+
+[data-theme$='-dark'] {
+  --app-bg: #0b0d10;
+  --app-glow-a: color-mix(in srgb, var(--accent) 10%, transparent);
+  --app-glow-b: color-mix(in srgb, var(--accent) 6%, transparent);
+
+  --sidebar-bg: rgba(22, 25, 30, 0.72);
+  --sidebar-bg-top: rgba(26, 29, 35, 0.74);
+  --sidebar-bg-bottom: rgba(18, 21, 26, 0.7);
+  --sidebar-bg-drawer: rgba(22, 25, 30, 0.9);
+  --sidebar-bg-solid: #171a1f;
+  --sidebar-blur: 18px;
+  --sidebar-border: rgba(255, 255, 255, 0.075);
+  --sidebar-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.025);
+  --sidebar-divider: rgba(255, 255, 255, 0.06);
+  --sidebar-item-hover: rgba(255, 255, 255, 0.055);
+  --sidebar-item-active: rgba(255, 255, 255, 0.09);
+  --sidebar-text: rgba(245, 247, 250, 0.95);
+  --sidebar-text-secondary: rgba(204, 210, 220, 0.82);
+  --sidebar-text-muted: rgba(182, 190, 203, 0.82);
+  --sidebar-icon: rgba(220, 225, 232, 0.74);
+  --sidebar-icon-active: rgba(245, 247, 250, 0.96);
+  --sidebar-input-bg: rgba(255, 255, 255, 0.045);
+  --sidebar-input-border: rgba(255, 255, 255, 0.07);
+  --sidebar-input-focus-bg: rgba(255, 255, 255, 0.065);
+  --sidebar-scrollbar: rgba(255, 255, 255, 0.12);
+  --sidebar-scrollbar-hover: rgba(255, 255, 255, 0.2);
+}
+
+/* The window background everything sits on; the glow is only visible through the glass. */
+.app-backdrop {
+  background-color: var(--app-bg);
+  background-image:
+    radial-gradient(520px 420px at 0% 0%, var(--app-glow-a), transparent 72%),
+    radial-gradient(460px 460px at 0% 100%, var(--app-glow-b), transparent 74%);
+  background-repeat: no-repeat;
+}
+
+/* One blur for the whole sidebar surface (never per item). */
+.glass-sidebar {
+  background: linear-gradient(180deg, var(--sidebar-bg-top), var(--sidebar-bg-bottom));
+  -webkit-backdrop-filter: blur(var(--sidebar-blur));
+  backdrop-filter: blur(var(--sidebar-blur));
+  box-shadow: var(--sidebar-shadow);
+
+  /* Everything inside reads its colours from the sidebar tokens through the usual token names. */
+  --text-primary: var(--sidebar-text);
+  --text-secondary: var(--sidebar-text-secondary);
+  --text-muted: var(--sidebar-text-muted);
+  --surface-hover: var(--sidebar-item-hover);
+  --surface-active: var(--sidebar-item-active);
+  --input-bg: var(--sidebar-input-bg);
+  --border-input: var(--sidebar-input-border);
+  --border-subtle: var(--sidebar-divider);
+  --scrollbar: var(--sidebar-scrollbar);
+  --scrollbar-hover: var(--sidebar-scrollbar-hover);
+}
+
+/* The drawer (narrow window) floats over arbitrary content: a more opaque layer keeps text readable. */
+.glass-sidebar-drawer {
+  background: var(--sidebar-bg-drawer);
+  border-right: 1px solid var(--sidebar-border);
+}
+
+/* Without blur support, or when Windows transparency effects are off: a plain solid surface. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-sidebar,
+  .glass-sidebar-drawer {
+    background: var(--sidebar-bg-solid);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-sidebar,
+  .glass-sidebar-drawer {
+    background: var(--sidebar-bg-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Slim, nearly invisible scrollbar inside the sidebar. */
+.glass-sidebar ::-webkit-scrollbar {
+  width: 8px;
+}
+.glass-sidebar ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Search field: stays translucent when focused (the generic field turns opaque). */
+.glass-sidebar [class*='focus-within:bg-canvas']:focus-within {
+  background: var(--sidebar-input-focus-bg);
+}
+
+/* Active row: a calm fill, a brighter label and a thin accent mark (shape, not just colour). */
+.sidebar-item-active {
+  position: relative;
+  color: var(--sidebar-text);
+}
+.sidebar-item-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.glass-sidebar .sidebar-icon {
+  color: var(--sidebar-icon);
+}
+.glass-sidebar .sidebar-item-active .sidebar-icon {
+  color: var(--sidebar-icon-active);
+}
+
 @layer base {
   html,
   body,
@@ -539,6 +689,13 @@
 .swatch-teal { --swatch-bg: var(--note-teal-bg); --swatch-border: var(--note-teal-border); }
 .swatch-blue { --swatch-bg: var(--note-blue-bg); --swatch-border: var(--note-blue-border); }
 .swatch-purple { --swatch-bg: var(--note-purple-bg); --swatch-border: var(--note-purple-border); }
+
+/* A folder row while notes are dragged over it: tinted + outlined (the outline is the non-colour cue). */
+.drop-target {
+  background: color-mix(in srgb, var(--accent) 14%, transparent) !important;
+  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: -1px;
+}
 
 /* ---------- Tags, search highlight ---------- */
 .tag-chip {

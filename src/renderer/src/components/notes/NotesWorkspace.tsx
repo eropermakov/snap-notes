@@ -5,8 +5,9 @@ import { SORT_LABELS, type SortOrder } from '@shared/noteList'
 import { useAppStore } from '../../store/useAppStore'
 import type { LayoutSize } from '../../hooks/useLayout'
 import { useVisibleNotes } from '../../hooks/useVisibleNotes'
-import { Button, ConfirmDialog, DropdownMenu, IconButton, MenuItem, MenuLabel, MenuSeparator, SegmentedControl, cn } from '../../ui'
-import { CloseIcon, DownloadIcon, GridIcon, ListIcon, PinIcon, PlusIcon, ScanDocIcon, SlidersIcon, SortIcon, StarIcon, TagIcon, TrashIcon } from '../icons'
+import { Button, ConfirmDialog, DropdownMenu, IconButton, MenuItem, MenuLabel, MenuSeparator, SegmentedControl, Spinner, cn } from '../../ui'
+import { queueProgressText, type OcrQueueState } from '@shared/ocrJob'
+import { CloseIcon, DownloadIcon, FolderIcon, GridIcon, ListIcon, PinIcon, PlusIcon, ScanDocIcon, SlidersIcon, SortIcon, StarIcon, TagIcon, TrashIcon } from '../icons'
 import NotesGrid from '../NotesGrid'
 import Trash from '../Trash'
 import NoteEditor from '../NoteEditor'
@@ -39,6 +40,7 @@ export default function NotesWorkspace({ layout }: { layout: LayoutSize }): Reac
   const setCardSize = useAppStore((s) => s.setCardSize)
   const setCompactGrid = useAppStore((s) => s.setCompactGrid)
   const selectedCount = useAppStore((s) => s.selection.selected.length)
+  const ocrQueue = useAppStore((s) => s.ocrQueue)
   const [confirmEmpty, setConfirmEmpty] = useState(false)
 
   const visible = useVisibleNotes()
@@ -50,7 +52,8 @@ export default function NotesWorkspace({ layout }: { layout: LayoutSize }): Reac
 
   // With the editor beside the list there is little room: buttons keep only their icons.
   const compactBar = layout === 'narrow' || editorOpen
-  const heading = searchQuery.trim() ? 'Поиск' : tagFilter ? `#${tagFilter}` : TITLES[filter]
+  const folderName = useAppStore((s) => s.folders.find((f) => f.id === s.activeFolderId)?.name)
+  const heading = searchQuery.trim() ? 'Поиск' : tagFilter ? `#${tagFilter}` : folderName && filter === 'all' ? folderName : TITLES[filter]
   const sortKeys = useMemo(() => Object.keys(SORT_LABELS) as SortOrder[], [])
 
   return (
@@ -63,6 +66,7 @@ export default function NotesWorkspace({ layout }: { layout: LayoutSize }): Reac
             <div className="flex min-w-0 items-baseline gap-2">
               <h1 className="truncate text-xl font-semibold text-fg">{heading}</h1>
               <span className="tabular text-base text-fg-muted">{count}</span>
+              <OcrQueueChip state={ocrQueue} />
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {filter === 'trash' ? (
@@ -149,6 +153,30 @@ export default function NotesWorkspace({ layout }: { layout: LayoutSize }): Reac
   )
 }
 
+/** Small quiet indicator of the background OCR queue; the work itself never needs this window. */
+function OcrQueueChip({ state }: { state: OcrQueueState }): ReactElement | null {
+  if (state.active === 0 && state.failed === 0) return null
+  if (state.active === 0) {
+    return (
+      <button
+        type="button"
+        onClick={() => void window.api.ocr.retryFailed()}
+        className="ml-2 inline-flex h-6 items-center gap-1.5 rounded-md bg-warning-soft px-2 text-xs font-medium text-fg hover:bg-hover"
+        title="Повторить распознавание фрагментов, которые не удалось прочитать"
+      >
+        Не распознано: {state.failed} · Повторить
+      </button>
+    )
+  }
+  return (
+    <span role="status" className="ml-2 inline-flex h-6 items-center gap-1.5 rounded-md bg-accent-soft px-2 text-xs font-medium text-fg">
+      <Spinner className="h-3 w-3" />
+      {queueProgressText(state)}
+      {state.queued > 0 ? ` · в очереди: ${state.queued}` : ''}
+    </span>
+  )
+}
+
 /** Replaces the toolbar while notes are selected: the actions that make sense for many notes at once. */
 function SelectionBar({ orderedIds }: { orderedIds: string[] }): ReactElement {
   const selected = useAppStore((s) => s.selection.selected)
@@ -161,6 +189,7 @@ function SelectionBar({ orderedIds }: { orderedIds: string[] }): ReactElement {
   const bulkDelete = useAppStore((s) => s.bulkDelete)
   const bulkExport = useAppStore((s) => s.bulkExport)
   const openTagEditor = useAppStore((s) => s.openTagEditor)
+  const openFolderDialog = useAppStore((s) => s.openFolderDialog)
 
   const chosen = useMemo(() => {
     const ids = new Set(selected)
@@ -200,6 +229,7 @@ function SelectionBar({ orderedIds }: { orderedIds: string[] }): ReactElement {
           onClick={() => void bulkFavorite(selected, !allFavorite)}
         />
         <ColorPickerButton onPick={(c) => void bulkColor(selected, c)} label="Цвет выбранных заметок" />
+        <IconButton label="В папку" icon={<FolderIcon />} onClick={() => openFolderDialog({ type: 'move', ids: selected })} />
         <IconButton label="Добавить теги" icon={<TagIcon />} onClick={() => openTagEditor(selected)} />
         <IconButton label="Экспорт выбранных" icon={<DownloadIcon />} onClick={() => void bulkExport(selected)} />
         <IconButton label="В корзину" tone="danger" icon={<TrashIcon />} onClick={() => void bulkDelete(selected)} />

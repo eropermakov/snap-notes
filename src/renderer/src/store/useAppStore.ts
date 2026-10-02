@@ -6,6 +6,8 @@ import { addTags as mergeTags, isContentPatch, normalizeTags } from '@shared/not
 import { normalizeSortOrder, type SortOrder } from '@shared/noteList'
 import { applySelection, EMPTY_SELECTION, pruneSelection, type SelectionState } from '@shared/selection'
 import { resolveStartupNote } from '@shared/noteLifecycle'
+import { EMPTY_QUEUE_STATE, type OcrQueueState } from '@shared/ocrJob'
+import { movableIds, undoMovePlan, type Folder } from '@shared/folders'
 
 export type ViewMode = 'grid' | 'list'
 /** Global modes shown in the navigation rail. */
@@ -13,6 +15,13 @@ export type AppSection = 'notes' | 'settings' | 'help'
 /** Collections inside the notes section (context sidebar). */
 export type NotesFilter = 'all' | 'recent' | 'favorites' | 'pinned' | 'trash'
 export type SettingsCategory = 'general' | 'editor' | 'recognition' | 'providers' | 'usage' | 'hotkeys' | 'storage' | 'data' | 'about'
+
+/** Dialogs for folders, opened from the sidebar, menus and the selection bar. */
+export type FolderDialog =
+  | { type: 'create'; thenMove?: string[] }
+  | { type: 'rename'; folderId: string }
+  | { type: 'delete'; folderId: string }
+  | { type: 'move'; ids: string[] }
 
 export interface ToastAction {
   label: string
@@ -59,6 +68,10 @@ interface AppState {
   notesFilter: NotesFilter
   /** Only notes with this tag (combined with the collection above). */
   tagFilter: string | null
+  folders: Folder[]
+  /** The folder shown in the list; null = "Все заметки". */
+  activeFolderId: string | null
+  folderDialog: FolderDialog | null
   settingsCategory: SettingsCategory
   /** Docked sidebar preference (normal/wide windows), persisted. */
   sidebarOpen: boolean
@@ -82,6 +95,8 @@ interface AppState {
   updateReadyVersion: string | null
   /** Credential-free provider states pushed by the main process. */
   providers: ProviderPublicState[]
+  /** Captures waiting / being recognized in the background. */
+  ocrQueue: OcrQueueState
 
   init: (options?: { restore?: boolean }) => Promise<void>
   refreshProviders: () => Promise<void>
@@ -94,6 +109,14 @@ interface AppState {
   setViewMode: (m: ViewMode) => void
   setNotesFilter: (f: NotesFilter) => void
   setTagFilter: (tag: string | null) => void
+  setActiveFolder: (id: string | null) => void
+  openFolderDialog: (dialog: FolderDialog) => void
+  closeFolderDialog: () => void
+  /** Resolves with an error message, or null when the folder was created. */
+  createFolder: (name: string) => Promise<{ error: string | null; folder?: Folder }>
+  renameFolder: (id: string, name: string) => Promise<string | null>
+  deleteFolder: (id: string, mode: 'unfile' | 'trash') => Promise<void>
+  moveNotes: (ids: string[], folderId: string | null) => Promise<void>
   setSidebarOpen: (open: boolean) => void
   toggleSidebar: () => void
   setLayoutNarrow: (narrow: boolean) => void
@@ -175,6 +198,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   section: 'notes',
   notesFilter: 'all',
   tagFilter: null,
+  folders: [],
+  activeFolderId: null,
+  folderDialog: null,
   settingsCategory: 'general',
   sidebarOpen: initialPrefs.sidebarOpen,
   layoutNarrow: false,
@@ -192,18 +218,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateAvailableVersion: null,
   updateReadyVersion: null,
   providers: [],
+  ocrQueue: EMPTY_QUEUE_STATE,
   noteRevisions: {},
 
   init: async (options = {}) => {
     if (initStarted) return
     initStarted = true
 
-    const [notes, trashNotes, settings, version, providers] = await Promise.all([
+    const [notes, trashNotes, settings, version, providers, folders] = await Promise.all([
       window.api.notes.list(),
       window.api.notes.listTrash().catch(() => [] as Note[]),
       window.api.settings.get(),
       window.api.app.getVersion(),
-      window.api.providers.list().catch(() => [] as ProviderPublicState[])
+      window.api.providers.list().catch(() => [] as ProviderPublicState[]),
+      window.api.folders.list().catch(() => [] as Folder[])
     ])
     const showWhatsNew = settings.onboardingComplete && settings.lastSeenVersion !== version
     // Restore the note that was open when the app was closed — if it still exists.
@@ -213,6 +241,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       trashNotes,
       settings,
       providers,
+      folders,
       showOnboarding: !settings.onboardingComplete,
       showWhatsNew,
       ready: true,
@@ -221,6 +250,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (restoreId) window.api.notes.setActive(restoreId)
 
     window.api.providers.onChanged((states) => set({ providers: states }))
+    window.api.folders.onChanged((folders) =>
+      set((state) => ({
+        folders,
+        // The open folder was deleted in another window: back to "Все заметки".
+        activeFolderId: state.activeFolderId && !folders.some((f) => f.id === state.activeFolderId) ? null : state.activeFolderId
+      }))
+    )
+    void window.api.ocr.getState().then((ocrQueue) => set({ ocrQueue }))
+    window.api.ocr.onState((ocrQueue) => set({ ocrQueue }))
 
     window.api.notes.onCreated((note) => {
       set((state) => ({ notes: upsert(state.notes, note) }))
@@ -290,9 +328,80 @@ export const useAppStore = create<AppState>((set, get) => ({
       void get().openTrash()
       return
     }
-    set({ section: 'notes', notesFilter: f, selection: EMPTY_SELECTION })
+    // Favorites, Recent and Pinned look across all notes, whatever folder they are in.
+    if (f !== 'all' && get().activeFolderId) window.api.notes.setActiveFolder(null)
+    set((state) => ({ section: 'notes', notesFilter: f, selection: EMPTY_SELECTION, activeFolderId: f === 'all' ? state.activeFolderId : null }))
   },
   setTagFilter: (tag) => set({ section: 'notes', tagFilter: tag, selection: EMPTY_SELECTION, notesFilter: get().notesFilter === 'trash' ? 'all' : get().notesFilter }),
+  setActiveFolder: (id) => {
+    window.api.notes.setActiveFolder(id)
+    set({ section: 'notes', notesFilter: 'all', activeFolderId: id, tagFilter: null, selection: EMPTY_SELECTION })
+  },
+  openFolderDialog: (dialog) => set({ folderDialog: dialog }),
+  closeFolderDialog: () => set({ folderDialog: null }),
+
+  createFolder: async (name) => {
+    const result = await window.api.folders.create(name)
+    set({ folders: result.folders })
+    if (!result.ok) return { error: result.error }
+    return { error: null, folder: result.folder }
+  },
+
+  renameFolder: async (id, name) => {
+    const result = await window.api.folders.rename(id, name)
+    set({ folders: result.folders })
+    return result.ok ? null : result.error
+  },
+
+  deleteFolder: async (id, mode) => {
+    const name = get().folders.find((f) => f.id === id)?.name ?? ''
+    const result = await window.api.folders.remove(id, mode)
+    if (!result.ok) return
+    const trashed = new Set(result.trashed)
+    set((state) => ({
+      folders: result.folders,
+      activeFolderId: state.activeFolderId === id ? null : state.activeFolderId,
+      notes: state.notes.filter((n) => !trashed.has(n.id)).map((n) => (n.folderId === id ? { ...n, folderId: null } : n)),
+      editorNoteId: state.editorNoteId && trashed.has(state.editorNoteId) ? null : state.editorNoteId,
+      selection: EMPTY_SELECTION
+    }))
+    if (result.trashed.length) void get().refreshTrash()
+    get().pushToast(
+      'success',
+      mode === 'trash' ? `Папка «${name}» удалена, заметки в корзине: ${result.trashed.length}` : `Папка «${name}» удалена. Заметки остались в «Все заметки»`
+    )
+  },
+
+  moveNotes: async (ids, folderId) => {
+    const { notes, folders } = get()
+    const changing = movableIds(notes, ids, folderId)
+    if (changing.length === 0) return
+    const plan = undoMovePlan(notes, changing)
+    const changing_ = new Set(changing)
+    // Shown at once; the main process confirms.
+    set((state) => ({ notes: state.notes.map((n) => (changing_.has(n.id) ? { ...n, folderId } : n)) }))
+    const result = await window.api.notes.move(changing, folderId)
+    if (!result.ok) {
+      set((state) => ({ notes: state.notes.map((n) => (changing_.has(n.id) ? { ...n, folderId: plan.find((p) => p.id === n.id)?.folderId ?? null } : n)) }))
+      get().pushToast('error', 'Не удалось переместить заметки')
+      return
+    }
+    const target = folderId ? (folders.find((f) => f.id === folderId)?.name ?? 'папку') : 'Все заметки'
+    const text = changing.length === 1 ? `Перемещено в «${target}»` : `Перемещено в «${target}»: ${changing.length}`
+    get().pushToast('success', text, {
+      label: 'Отменить',
+      run: () => {
+        // Each note goes back to the folder it came from.
+        const byFolder = new Map<string | null, string[]>()
+        for (const step of plan) byFolder.set(step.folderId, [...(byFolder.get(step.folderId) ?? []), step.id])
+        for (const [from, group] of byFolder) {
+          set((state) => ({ notes: state.notes.map((n) => (group.includes(n.id) ? { ...n, folderId: from } : n)) }))
+          void window.api.notes.move(group, from)
+        }
+      }
+    })
+  },
+
   setSidebarOpen: (open) => {
     if (get().layoutNarrow) {
       set({ drawerOpen: open })
@@ -344,7 +453,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   backToNotes: () => set((state) => ({ section: 'notes', notesFilter: state.notesFilter === 'trash' ? 'all' : state.notesFilter })),
 
   createNote: async () => {
-    const note = await window.api.notes.create()
+    const note = await window.api.notes.create({ folderId: get().activeFolderId })
     set((state) => ({
       notes: upsert(state.notes, note),
       notesFilter: state.notesFilter === 'trash' ? 'all' : state.notesFilter,

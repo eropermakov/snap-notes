@@ -116,6 +116,7 @@ export default function FragmentTools({ root, wrapper, noteId, sources, flush, o
   const badge = providerBadgeLabel(source?.method)
   // Quality is shown only when the recognizer reported real data (never guessed for AI output).
   const qualityLabel = source?.quality ? QUALITY_LABELS[source.quality] : null
+  const failedJobId = source?.failed && source.jobId ? source.jobId : null
   const details = [
     source?.method ? `Источник: ${source.method}` : '',
     source?.model && source.model.toLowerCase() !== source.method?.toLowerCase() ? `Модель: ${source.model}` : '',
@@ -154,6 +155,17 @@ export default function FragmentTools({ root, wrapper, noteId, sources, flush, o
         style={{ top: hovered.top }}
         onMouseEnter={() => hideTimer.current && clearTimeout(hideTimer.current)}
       >
+        {failedJobId && (
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => void window.api.ocr.retryJob(failedJobId).then((ok) => pushToast(ok ? 'success' : 'warning', ok ? 'Повторное распознавание поставлено в очередь' : 'Не удалось повторить'))}
+            className="flex h-6 items-center gap-1 rounded-md border border-line bg-warning-soft px-2 text-xs font-medium text-fg shadow-popover hover:bg-hover"
+          >
+            <RefreshIcon className="h-3 w-3" />
+            Повторить
+          </button>
+        )}
         {badge && (
           <span
             title={details}
@@ -194,6 +206,14 @@ export default function FragmentTools({ root, wrapper, noteId, sources, flush, o
 
       <Menu open={menuOpen} onClose={() => setMenuOpen(false)} anchor={anchor} placement="bottom-end" aria-label="Распознанный фрагмент">
         <MenuLabel>Распознано с экрана</MenuLabel>
+        {failedJobId && (
+          <MenuItem
+            icon={<RefreshIcon />}
+            onSelect={() => void window.api.ocr.retryJob(failedJobId).then((ok) => pushToast(ok ? 'success' : 'warning', ok ? 'Повторное распознавание поставлено в очередь' : 'Не удалось повторить'))}
+          >
+            Повторить распознавание
+          </MenuItem>
+        )}
         <MenuItem icon={<EyeIcon />} disabled={!imageUrl} onSelect={() => setPreview(sourceId)}>
           Показать оригинал
         </MenuItem>

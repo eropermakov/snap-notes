@@ -15,6 +15,7 @@ import ToastContainer from './components/ToastContainer'
 import CommandPalette from './components/CommandPalette'
 import ChatGptWelcome from './components/ai/ChatGptWelcome'
 import TagEditorDialog from './components/notes/TagEditorDialog'
+import FolderDialogs from './components/notes/FolderDialogs'
 import { useAppFlush } from './hooks/useAppFlush'
 
 const SIDEBAR_WIDTH = { narrow: 260, normal: 248, wide: 272 } as const
@@ -132,6 +133,7 @@ export default function MainApp(): ReactElement {
       {!showOnboarding && <ChatGptWelcome />}
       <CommandPalette />
       <TagEditorDialog />
+      <FolderDialogs />
       <ToastContainer />
     </>
   )
