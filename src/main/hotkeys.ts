@@ -3,7 +3,19 @@ import { HotkeyConfig, HotkeyKind, HotkeyRegistrationResult, OPTIONAL_HOTKEYS } 
 
 export type HotkeyHandlers = Record<HotkeyKind, () => void>
 
-export const HOTKEY_KINDS: HotkeyKind[] = ['region', 'fullscreen', 'document', 'longScreenshot', 'copyForAi', 'openApp', 'session']
+export const HOTKEY_KINDS: HotkeyKind[] = [
+  'region',
+  'fullscreen',
+  'document',
+  'longScreenshot',
+  'copyForAi',
+  'openApp',
+  'session',
+  'quickNote',
+  'repeatCapture',
+  'ocrClipboard',
+  'globalSearch'
+]
 
 const LABELS: Record<HotkeyKind, string> = {
   region: 'захват в заметку',
@@ -12,7 +24,11 @@ const LABELS: Record<HotkeyKind, string> = {
   longScreenshot: 'прокручиваемый захват',
   copyForAi: 'скопировать для AI',
   openApp: 'открыть Snap Notes',
-  session: 'сессия захвата'
+  session: 'сессия захвата',
+  quickNote: 'быстрая заметка',
+  repeatCapture: 'повторить захват',
+  ocrClipboard: 'распознать картинку из буфера',
+  globalSearch: 'поиск по заметкам'
 }
 
 /**

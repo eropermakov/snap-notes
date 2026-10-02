@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
+import { SORT_LABELS, recentNotes, type SortOrder } from '@shared/noteList'
 import { useAppStore } from '../store/useAppStore'
+import { searchAllNotes } from '../hooks/useVisibleNotes'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { cn, Kbd, motionPresets } from '../ui'
 import {
+  ClipboardIcon,
+  ClockIcon,
   DownloadIcon,
   GearIcon,
   GridIcon,
+  ImageIcon,
   InboxIcon,
   ListIcon,
   NotesIcon,
@@ -15,24 +21,37 @@ import {
   PlusIcon,
   QuestionIcon,
   RefreshIcon,
+  RepeatIcon,
   ScanDocIcon,
   SearchIcon,
-  TrashIcon
+  SortIcon,
+  StarIcon,
+  TrashIcon,
+  UndoIcon
 } from './icons'
 import { SETTINGS_CATEGORIES } from './Settings'
-import { byRecent, matchesQuery, noteLabel } from './notes/noteFilters'
+import { noteLabel } from './notes/noteFilters'
+import { Highlight } from './notes/Highlight'
+import { fileToPngBytes } from '../utils/imageFiles'
 
 interface Command {
   id: string
   group: string
+  /** Plain text used for filtering and the accessible name. */
   label: string
+  /** Rich rendering of the label (highlighted match). */
+  node?: ReactNode
+  /** Second line: the fragment of the note that matched. */
+  detail?: ReactNode
   icon: ReactNode
   hint?: string
   keywords?: string
   run: () => void
 }
 
-/** Ctrl+K: every action and every note, one keyboard-driven list. */
+const SEARCH_DEBOUNCE = 150
+
+/** Ctrl+K: every action and every note, one keyboard-driven list (↑ ↓ Enter Esc). */
 export default function CommandPalette(): ReactElement {
   const open = useAppStore((s) => s.commandOpen)
   const setOpen = useAppStore((s) => s.setCommandOpen)
@@ -60,6 +79,8 @@ function PaletteBody({ onClose }: { onClose: () => void }): ReactElement {
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  // The search itself waits for a short pause in typing; the field stays instantly responsive.
+  const debounced = useDebouncedValue(query.trim(), SEARCH_DEBOUNCE)
 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
@@ -67,7 +88,30 @@ function PaletteBody({ onClose }: { onClose: () => void }): ReactElement {
     return () => previous?.focus?.()
   }, [])
 
+  const ocrFile = async (): Promise<void> => {
+    const picked = await window.api.notes.pickImage()
+    if (!picked) return
+    if (picked.error || !picked.bytes) {
+      s.pushToast('error', picked.error ?? 'Не удалось открыть файл')
+      return
+    }
+    try {
+      const png = await fileToPngBytes(new Blob([picked.bytes as BlobPart]))
+      await window.api.notes.ocrImageData(s.editorNoteId, png)
+    } catch (err) {
+      s.pushToast('error', (err as Error).message)
+    }
+  }
+
   const commands = useMemo<Command[]>(() => {
+    const sorts = (Object.keys(SORT_LABELS) as SortOrder[]).map<Command>((key) => ({
+      id: `sort-${key}`,
+      group: 'Сортировка',
+      label: `Сортировать: ${SORT_LABELS[key]}`,
+      icon: <SortIcon />,
+      keywords: 'порядок sort',
+      run: () => s.setSortOrder(key)
+    }))
     const actions: Command[] = [
       { id: 'new', group: 'Действия', label: 'Новая заметка', icon: <PlusIcon />, hint: 'Ctrl+N', run: () => void s.createNote() },
       {
@@ -78,6 +122,37 @@ function PaletteBody({ onClose }: { onClose: () => void }): ReactElement {
         keywords: 'скан захват',
         run: () => void window.api.app.captureDocument()
       },
+      {
+        id: 'repeat',
+        group: 'Действия',
+        label: 'Повторить последний захват',
+        icon: <RepeatIcon />,
+        keywords: 'область снова screenshot repeat',
+        run: () => void window.api.capture.repeat()
+      },
+      {
+        id: 'clipboard-ocr',
+        group: 'Действия',
+        label: 'Распознать картинку из буфера обмена',
+        icon: <ClipboardIcon />,
+        keywords: 'ocr clipboard буфер',
+        run: () =>
+          void window.api.capture.ocrClipboard().then((r) => {
+            if (!r.ok) s.pushToast('warning', r.message ?? 'В буфере обмена нет изображения')
+          })
+      },
+      { id: 'file-ocr', group: 'Действия', label: 'Распознать текст с картинки из файла…', icon: <ImageIcon />, keywords: 'ocr файл png jpg', run: () => void ocrFile() },
+      {
+        id: 'undo-ocr',
+        group: 'Действия',
+        label: 'Отменить последнее распознавание',
+        icon: <UndoIcon />,
+        keywords: 'undo ocr',
+        run: () =>
+          void window.api.capture.undoLast().then((r) => {
+            if (!r.ok) s.pushToast('warning', 'Нечего отменять')
+          })
+      },
       { id: 'search', group: 'Действия', label: 'Поиск по заметкам', icon: <SearchIcon />, hint: 'Ctrl+F', run: s.focusSearch },
       {
         id: 'view',
@@ -86,6 +161,14 @@ function PaletteBody({ onClose }: { onClose: () => void }): ReactElement {
         icon: s.viewMode === 'grid' ? <ListIcon /> : <GridIcon />,
         keywords: 'вид сетка список',
         run: () => s.setViewMode(s.viewMode === 'grid' ? 'list' : 'grid')
+      },
+      {
+        id: 'compact',
+        group: 'Действия',
+        label: s.settings?.compactGrid ? 'Обычная сетка' : 'Компактная сетка',
+        icon: <GridIcon />,
+        keywords: 'плотность размер карточек',
+        run: () => s.setCompactGrid(!s.settings?.compactGrid)
       },
       {
         id: 'sidebar',
@@ -114,10 +197,17 @@ function PaletteBody({ onClose }: { onClose: () => void }): ReactElement {
         icon: <RefreshIcon />,
         run: () => void window.api.app.checkForUpdates().then((r) => s.pushToast(r.ok ? 'success' : 'warning', r.message))
       },
-      { id: 'go-all', group: 'Перейти', label: 'Все заметки', icon: <InboxIcon />, run: () => s.setNotesFilter('all') },
+      { id: 'go-all', group: 'Перейти', label: 'Все заметки', icon: <InboxIcon />, run: () => {
+          s.setTagFilter(null)
+          s.setNotesFilter('all')
+        }
+      },
+      { id: 'go-recent', group: 'Перейти', label: 'Недавние', icon: <ClockIcon />, run: () => s.setNotesFilter('recent') },
+      { id: 'go-favorites', group: 'Перейти', label: 'Избранное', icon: <StarIcon />, run: () => s.setNotesFilter('favorites') },
       { id: 'go-pinned', group: 'Перейти', label: 'Закреплённые', icon: <PinIcon />, run: () => s.setNotesFilter('pinned') },
       { id: 'go-trash', group: 'Перейти', label: 'Корзина', icon: <TrashIcon />, run: () => s.setNotesFilter('trash') },
       { id: 'go-help', group: 'Перейти', label: 'Справка', icon: <QuestionIcon />, run: s.openInstructions },
+      ...sorts,
       ...SETTINGS_CATEGORIES.map((c) => ({
         id: `settings-${c.id}`,
         group: 'Настройки',
@@ -127,24 +217,42 @@ function PaletteBody({ onClose }: { onClose: () => void }): ReactElement {
         run: () => s.openSettings(c.id)
       }))
     ]
-    const q = query.trim().toLowerCase()
+    const q = debounced.toLowerCase()
     const filteredActions = q ? actions.filter((a) => `${a.label} ${a.keywords ?? ''}`.toLowerCase().includes(q)) : actions
-    const notes = s.notes
-      .filter((n) => matchesQuery(n, query))
-      .sort(byRecent)
-      .slice(0, q ? 20 : 5)
-      .map<Command>((n) => ({
+
+    let noteCommands: Command[]
+    if (q) {
+      noteCommands = searchAllNotes(s.notes, debounced, 20).map<Command>(({ note, hit }) => ({
+        id: `note-${note.id}`,
+        group: 'Заметки',
+        label: `${note.emoji ? `${note.emoji} ` : ''}${noteLabel(note)}`,
+        node: (
+          <>
+            {note.emoji && <span className="mr-1.5">{note.emoji}</span>}
+            {note.title.trim() ? <Highlight text={note.title} ranges={hit.titleRanges} /> : noteLabel(note)}
+          </>
+        ),
+        detail: hit.snippet ? <Highlight text={hit.snippet} ranges={hit.snippetRanges} /> : hit.matchedIn.includes('tags') ? 'Совпадение в тегах' : undefined,
+        icon: note.favorite ? <StarIcon filled /> : note.pinned ? <PinIcon filled /> : <NotesIcon />,
+        run: () => s.openNote(note.id, debounced)
+      }))
+    } else {
+      noteCommands = recentNotes(s.notes, 5).map<Command>((n) => ({
         id: `note-${n.id}`,
-        group: q ? 'Заметки' : 'Недавние заметки',
+        group: 'Недавние заметки',
         label: `${n.emoji ? `${n.emoji} ` : ''}${noteLabel(n)}`,
         icon: <NotesIcon />,
         run: () => s.openNote(n.id)
       }))
-    return q ? [...notes, ...filteredActions] : [...filteredActions.slice(0, 7), ...notes, ...filteredActions.slice(7)]
+    }
+    return q ? [...noteCommands, ...filteredActions] : [...filteredActions.slice(0, 8), ...noteCommands, ...filteredActions.slice(8)]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, s.notes, s.viewMode, s.sidebarOpen, s.drawerOpen, s.layoutNarrow])
+  }, [debounced, s.notes, s.viewMode, s.sidebarOpen, s.drawerOpen, s.layoutNarrow, s.settings?.compactGrid, s.editorNoteId])
 
-  useEffect(() => setIndex(0), [query])
+  // While the user is still typing, the list shows the previous result instead of flickering.
+  const pending = query.trim() !== debounced
+
+  useEffect(() => setIndex(0), [debounced])
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>(`[data-index="${index}"]`)?.scrollIntoView({ block: 'nearest' })
   }, [index])
@@ -163,7 +271,7 @@ function PaletteBody({ onClose }: { onClose: () => void }): ReactElement {
       role="dialog"
       aria-modal="true"
       aria-label="Команды"
-      className="flex h-fit max-h-[min(520px,70vh)] w-full max-w-[560px] flex-col overflow-hidden rounded-3xl border border-line bg-elevated shadow-modal"
+      className="flex h-fit max-h-[min(560px,72vh)] w-full max-w-[580px] flex-col overflow-hidden rounded-3xl border border-line bg-elevated shadow-modal"
       onKeyDown={(e) => {
         if (e.key === 'ArrowDown') {
           e.preventDefault()
@@ -195,7 +303,7 @@ function PaletteBody({ onClose }: { onClose: () => void }): ReactElement {
         />
         <Kbd>Esc</Kbd>
       </div>
-      <div ref={listRef} id="command-list" role="listbox" className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div ref={listRef} id="command-list" role="listbox" className={cn('min-h-0 flex-1 overflow-y-auto p-2', pending && 'opacity-70')}>
         {commands.length === 0 && <p className="px-3 py-6 text-center text-base text-fg-muted">Ничего не найдено</p>}
         {commands.map((cmd, i) => {
           const header = cmd.group !== lastGroup ? cmd.group : null
@@ -207,16 +315,20 @@ function PaletteBody({ onClose }: { onClose: () => void }): ReactElement {
                 id={`cmd-${cmd.id}`}
                 role="option"
                 aria-selected={i === index}
+                aria-label={cmd.label}
                 data-index={i}
                 onMouseMove={() => i !== index && setIndex(i)}
                 onClick={() => run(cmd)}
                 className={cn(
-                  'flex h-9 cursor-default items-center gap-3 rounded-lg px-3 text-base transition-colors duration-fast',
+                  'flex min-h-9 cursor-default items-center gap-3 rounded-lg px-3 py-1.5 text-base transition-colors duration-fast',
                   i === index ? 'bg-hover text-fg' : 'text-fg'
                 )}
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-fg-secondary">{cmd.icon}</span>
-                <span className="min-w-0 flex-1 truncate">{cmd.label}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{cmd.node ?? cmd.label}</span>
+                  {cmd.detail && <span className="mt-0.5 line-clamp-1 block text-sm text-fg-secondary">{cmd.detail}</span>}
+                </span>
                 {cmd.hint && <span className="shrink-0 text-xs text-fg-muted">{cmd.hint}</span>}
               </div>
             </div>

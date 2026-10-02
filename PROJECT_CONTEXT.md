@@ -9,7 +9,7 @@ Snap Notes — десктоп-приложение для Windows (Electron + Re
 - **Путь проекта:** `D:\SirVault\WeewScan 1`
 - **Репозиторий:** https://github.com/eropermakov/snap-notes (код запушен, история коммитов сохранена)
 - **Релизы:** https://github.com/eropermakov/snap-notes/releases — там же лежат `.exe`-установщики
-- **Текущая версия:** 1.5.0
+- **Текущая версия:** 1.6.0
 - **Язык интерфейса:** русский, везде
 
 ## Стек
@@ -69,6 +69,13 @@ npm run release       # собрать И опубликовать релиз н
 - Роутер: `AiSettings.prefer` = free/quality/speed/custom; текстовые модели получают текст после Tesseract, OCR-движки возвращают Markdown → блоки (`src/shared/markdownBlocks.ts`)
 - Остаток/сброс — только от провайдера (Groq, Cerebras, OpenRouter `/key`, Mistral; Cohere Trial — если пришлёт заголовки); Cloudflare — документированная квота 10 000 нейронов/сутки без процентов; везде отдельно «Локальный счётчик Snap Notes»
 - Тёмная тема: токены в `styles/index.css`, проверка контраста — `tests/theme/darkTheme.test.ts`. Линтер: `npm run lint`
+
+### Организация заметок и рабочие процессы (v1.6)
+- Модель `Note` (`src/shared/types.ts`) дополнена: `favorite`, `color` (семантический id, цвета — токены `--note-<id>-bg/-border` в `styles/index.css` для светлой и тёмной темы), `tags` (нормализованные, без «#»), `autoCreated` (создана захватом, пустая удаляется), `titleManual` (заголовок ввёл пользователь — автоматически больше не меняется). Правила и миграция — `shared/noteMeta.ts`; `initNotesStore` делает бэкап в `userData/backups/notes-pre-migration-*` перед первой перезаписью старых файлов. Закрепление/избранное/цвет НЕ меняют `updatedAt` (`isContentPatch`).
+- Чистая логика (с тестами в `tests/notes/`): `noteList` (сортировка, закреплённые сверху, фильтры, теги), `noteSearch` (индекс по заголовку/тексту/спискам/таблицам/коду/тегам, подсветка, сниппеты), `selection`, `autosave` (отложенная запись ~1 с, flush при закрытии/смене/выходе), `windowBounds` (возврат окна на доступный монитор), `captureRegion` (проверка области «Повторить захват»), `clipboardImage` (подсказка один раз на картинку), `textTools` (убрать переносы, ссылки/почта/телефоны, автозаголовок), `ocrQuality` (качество только из реальных confidence Tesseract), `settingsSanitize`, `imageRefs` (дублирование с копией картинок).
+- Main: `noteWindows.ts` (рассылка изменений во все окна заметок), `floatingNotes.ts`, `quickNote.ts`, `windowState.ts`, `lastCapture.ts`, `clipboardOcr.ts`, `imageOcr.ts`, `retryOcr.ts` (новый результат держится в памяти до «Заменить»), `capturePipeline.ts` (`runRepeatCapture`, `runImageOcr`, `undoLastCapture`, удаление пустых автозаметок). Роуты окна: `#quick`, `#note/<id>`.
+- Renderer: поиск через `hooks/useVisibleNotes.ts` (debounce 200 мс, один индекс на окно), редактор — `NoteEditor.tsx` + `RichTextEditor.tsx` + `components/editor/` (`textCommands`, `LinkTools`, `CollapseTools`, `RetryModal`, `searchHighlight`). Свёрнутые блоки — состояние только интерфейса (localStorage), в заметку не пишутся.
+- Живая проверка: `electron . --user-data-dir=<папка> --remote-debugging-port=9333` и CDP (см. раздел про изолированный профиль выше). Системный буфер обмена в такой сессии может быть недоступен — тогда проверяются только тесты и путь «нет изображения/текста».
 
 ### Блочный формат заметок (v1.4)
 - `src/shared/blocks.ts` — типы блоков, `htmlToBlocks`/`blocksToHtml` (круговой обмен с сохранением `data-block`/`data-src`), санитайзинг inline-HTML; `blockExport.ts` — Markdown / «для AI» / текст / rich HTML / TSV / CSV

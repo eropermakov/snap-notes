@@ -1,5 +1,7 @@
 import { DEFAULT_AI_SETTINGS, type AiSettings, type ApiKeyProviderId } from './providers'
 import type { Block, OcrSource } from './blocks'
+import type { NoteColor } from './noteMeta'
+import type { SortOrder } from './noteList'
 
 export interface Note {
   id: string
@@ -10,7 +12,18 @@ export interface Note {
    */
   body: string
   emoji: string | null
+  /** Pinned notes are shown above all others, whatever the sort order. */
   pinned: boolean
+  /** Favorites are a collection (filter), unrelated to pinning/order. */
+  favorite: boolean
+  /** Semantic colour id; the actual colours live in the theme tokens (light/dark). */
+  color: NoteColor
+  /** Normalized lowercase tags without "#". */
+  tags: string[]
+  /** Created by a capture / quick note, not by the user: empty ones are cleaned up when left. */
+  autoCreated?: boolean
+  /** The user typed the title: it is never replaced automatically again. */
+  titleManual?: boolean
   createdAt: number
   updatedAt: number
   deletedAt: number | null
@@ -35,12 +48,20 @@ export interface HotkeyConfig {
   openApp: string
   /** Start / finish a Capture Session (several captures into one note). Optional: '' = off. */
   session: string
+  /** Small floating window to jot a note down over any app. Optional: '' = off. */
+  quickNote: string
+  /** Capture the same screen area again. Optional: '' = off. */
+  repeatCapture: string
+  /** Recognize the image currently in the clipboard. Optional: '' = off. */
+  ocrClipboard: string
+  /** Show Snap Notes with the search palette open. Optional: '' = off. */
+  globalSearch: string
 }
 
 export type HotkeyKind = keyof HotkeyConfig
 
 /** Hotkeys that may be left empty (disabled). The capture hotkeys are required. */
-export const OPTIONAL_HOTKEYS: HotkeyKind[] = ['copyForAi', 'openApp', 'session']
+export const OPTIONAL_HOTKEYS: HotkeyKind[] = ['copyForAi', 'openApp', 'session', 'quickNote', 'repeatCapture', 'ocrClipboard', 'globalSearch']
 
 /** What Capture to Note does when no note is open. */
 export type NoNoteBehavior = 'new' | 'ask'
@@ -105,6 +126,36 @@ export interface AppSettings {
   trashRetentionDays: number
   useHybridPipeline: boolean
   lastSeenVersion: string
+  /** Notes list order inside the pinned / other groups. */
+  sortOrder: SortOrder
+  cardSize: CardSize
+  compactGrid: boolean
+  /** Narrow windows turn the sidebar into a drawer (off: keep it docked). */
+  autoCollapseSidebar: boolean
+  restoreLastNote: boolean
+  lastNoteId: string | null
+  /** Offer OCR when a new image appears in the clipboard. */
+  suggestClipboardOcr: boolean
+  ocrFeedback: OcrFeedback
+  /** '' = the app's default font. */
+  editorFontFamily: string
+  editorFontSize: number
+  /** Window geometry (internal; restored on start and validated against the connected screens). */
+  windowState: SavedWindowState | null
+  floatingState: SavedWindowState | null
+  floatingOnTop: boolean
+  quickNoteState: SavedWindowState | null
+}
+
+export type CardSize = 'small' | 'medium' | 'large'
+export type OcrFeedback = 'none' | 'visual' | 'sound'
+
+export interface SavedWindowState {
+  x?: number
+  y?: number
+  width: number
+  height: number
+  maximized?: boolean
 }
 
 export const DEFAULT_HOTKEYS: HotkeyConfig = {
@@ -115,7 +166,12 @@ export const DEFAULT_HOTKEYS: HotkeyConfig = {
   // Ctrl+Shift+C is Chrome/Edge DevTools "inspect element" — a global hotkey would take it from browsers.
   copyForAi: 'Control+Alt+C',
   openApp: 'Control+Alt+N',
-  session: 'Control+Alt+S'
+  session: 'Control+Alt+S',
+  quickNote: 'Control+Alt+Q',
+  // Ctrl+Shift+R is "hard reload" in browsers; Alt keeps that shortcut free.
+  repeatCapture: 'Control+Alt+R',
+  ocrClipboard: 'Control+Alt+O',
+  globalSearch: 'Control+Alt+K'
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -133,7 +189,21 @@ export const DEFAULT_SETTINGS: AppSettings = {
   screenshotCacheRetentionHours: 24,
   trashRetentionDays: 30,
   useHybridPipeline: false,
-  lastSeenVersion: ''
+  lastSeenVersion: '',
+  sortOrder: 'modified',
+  cardSize: 'medium',
+  compactGrid: false,
+  autoCollapseSidebar: true,
+  restoreLastNote: true,
+  lastNoteId: null,
+  suggestClipboardOcr: false,
+  ocrFeedback: 'visual',
+  editorFontFamily: '',
+  editorFontSize: 14,
+  windowState: null,
+  floatingState: null,
+  floatingOnTop: false,
+  quickNoteState: null
 }
 
 export type ToastType = 'success' | 'warning' | 'error'

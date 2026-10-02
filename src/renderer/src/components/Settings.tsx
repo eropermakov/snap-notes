@@ -1,5 +1,7 @@
-import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
-import { OPTIONAL_HOTKEYS, type HotkeyKind, type StorageStats, type ThemeId } from '@shared/types'
+import { useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
+import { OPTIONAL_HOTKEYS, type CardSize, type HotkeyKind, type OcrFeedback, type StorageStats, type ThemeId } from '@shared/types'
+import { SORT_LABELS, type SortOrder } from '@shared/noteList'
+import { EDITOR_FONTS, FONT_SIZE_MAX, FONT_SIZE_MIN } from '@shared/settingsSanitize'
 import { useAppStore, type SettingsCategory } from '../store/useAppStore'
 import AiRecognitionSettings from './ai/AiRecognitionSettings'
 import UsageCenter from './ai/UsageCenter'
@@ -9,6 +11,7 @@ import {
   Button,
   ConfirmDialog,
   NumberField,
+  Select,
   Page,
   PageHeader,
   Section,
@@ -27,6 +30,7 @@ import {
   GaugeIcon,
   HardDriveIcon,
   InfoIcon,
+  EditIcon,
   KeyboardIcon,
   ResetIcon,
   ScanDocIcon,
@@ -45,6 +49,7 @@ const GROUPS: { title?: string; items: CategoryInfo[] }[] = [
   {
     items: [
       { id: 'general', label: 'Общие', icon: <SlidersIcon /> },
+      { id: 'editor', label: 'Редактор', icon: <EditIcon />, description: 'Шрифт и размер текста в заметках. Интерфейс приложения не меняется, а код всегда набирается моноширинным шрифтом.' },
       { id: 'hotkeys', label: 'Хоткеи', icon: <KeyboardIcon />, description: 'Глобальные сочетания работают, даже когда окно Snap Notes свёрнуто.' }
     ]
   },
@@ -113,6 +118,7 @@ export default function Settings(): ReactElement {
     <Page key={category}>
       <PageHeader title={info.label} description={info.description} />
       {category === 'general' && <GeneralPage />}
+      {category === 'editor' && <EditorPage />}
       {category === 'hotkeys' && <HotkeysPage />}
       {category === 'recognition' && <RecognitionPage />}
       {category === 'usage' && <UsageCenter />}
@@ -132,6 +138,59 @@ function GeneralPage(): ReactElement | null {
       <Section title="Внешний вид">
         <SettingsGroup>
           <ThemePicker value={settings.theme} onChange={(theme: ThemeId) => void updateSettings({ theme })} />
+        </SettingsGroup>
+      </Section>
+      <Section title="Заметки">
+        <SettingsGroup>
+          <SettingsRow
+            title="Порядок заметок"
+            description="Закреплённые заметки всегда выше остальных."
+            control={
+              <Select
+                aria-label="Порядок заметок"
+                value={settings.sortOrder}
+                onChange={(e) => void updateSettings({ sortOrder: e.target.value as SortOrder })}
+                wrapperClassName="w-52"
+              >
+                {(Object.keys(SORT_LABELS) as SortOrder[]).map((key) => (
+                  <option key={key} value={key}>
+                    {SORT_LABELS[key]}
+                  </option>
+                ))}
+              </Select>
+            }
+          />
+          <SettingsRow
+            title="Размер карточек"
+            description="Ширина, отступы и длина предпросмотра."
+            control={
+              <SegmentedControl
+                aria-label="Размер карточек"
+                value={settings.cardSize}
+                onChange={(value: CardSize) => void updateSettings({ cardSize: value })}
+                options={[
+                  { value: 'small', label: 'Малые' },
+                  { value: 'medium', label: 'Средние' },
+                  { value: 'large', label: 'Крупные' }
+                ]}
+              />
+            }
+          />
+          <SettingsRow
+            title="Компактная сетка"
+            description="Меньше промежутков и короче предпросмотр — больше заметок на экране."
+            control={<Toggle aria-label="Компактная сетка" checked={settings.compactGrid} onChange={(checked) => void updateSettings({ compactGrid: checked })} />}
+          />
+          <SettingsRow
+            title="Открывать последнюю заметку при запуске"
+            description="Если заметка уже удалена, откроется обычный экран со списком."
+            control={<Toggle aria-label="Открывать последнюю заметку при запуске" checked={settings.restoreLastNote} onChange={(checked) => void updateSettings({ restoreLastNote: checked })} />}
+          />
+          <SettingsRow
+            title="Сворачивать боковую панель в узком окне"
+            description="В узком окне панель выезжает по кнопке и не занимает место. Ваш выбор (открыта или закрыта) запоминается."
+            control={<Toggle aria-label="Сворачивать боковую панель в узком окне" checked={settings.autoCollapseSidebar} onChange={(checked) => void updateSettings({ autoCollapseSidebar: checked })} />}
+          />
         </SettingsGroup>
       </Section>
       <Section title="Система">
@@ -171,7 +230,11 @@ const HOTKEYS: { kind: HotkeyKind; label: string; description: string }[] = [
   { kind: 'longScreenshot', label: 'Прокручиваемый захват', description: 'Нажмите, прокрутите страницу и нажмите ещё раз — получится документ.' },
   { kind: 'fullscreen', label: 'Захват всего экрана', description: 'Распознать всё, что сейчас на экране.' },
   { kind: 'copyForAi', label: 'Скопировать заметку для AI', description: 'Открытая заметка в чистом Markdown — для ChatGPT, Claude и других.' },
-  { kind: 'openApp', label: 'Открыть Snap Notes', description: 'Показать окно приложения.' }
+  { kind: 'openApp', label: 'Открыть Snap Notes', description: 'Показать окно приложения.' },
+  { kind: 'quickNote', label: 'Быстрая заметка', description: 'Маленькое окно поверх любой программы: напишите и нажмите Ctrl+Enter. Главное окно не открывается.' },
+  { kind: 'repeatCapture', label: 'Повторить последний захват', description: 'Снова захватить ту же область экрана. Если экраны изменились — предложит выделить заново.' },
+  { kind: 'ocrClipboard', label: 'Распознать картинку из буфера', description: 'Текст с изображения, которое сейчас в буфере обмена.' },
+  { kind: 'globalSearch', label: 'Поиск по заметкам', description: 'Показать Snap Notes и сразу открыть поиск.' }
 ]
 
 function HotkeysPage(): ReactElement | null {
@@ -241,7 +304,115 @@ function HotkeysPage(): ReactElement | null {
               />
             }
           />
+          <SettingsRow
+            title="Когда распознавание закончилось"
+            description="Короткое окошко «Добавлено в …» с кнопками «Отменить» и «Открыть». Звук тихий и короткий."
+            control={
+              <SegmentedControl
+                aria-label="Уведомление о завершении распознавания"
+                value={settings.ocrFeedback}
+                onChange={(value: OcrFeedback) => void updateSettings({ ocrFeedback: value })}
+                options={[
+                  { value: 'none', label: 'Ничего' },
+                  { value: 'visual', label: 'Окошко' },
+                  { value: 'sound', label: 'Окошко и звук' }
+                ]}
+              />
+            }
+          />
+          <SettingsRow
+            title="Предлагать распознать картинку из буфера"
+            description="Когда вы копируете изображение, появится маленькая подсказка. Для одной и той же картинки — только один раз."
+            control={
+              <Toggle
+                aria-label="Предлагать распознать картинку из буфера"
+                checked={settings.suggestClipboardOcr}
+                onChange={(checked) => void updateSettings({ suggestClipboardOcr: checked })}
+              />
+            }
+          />
         </SettingsGroup>
+      </Section>
+    </>
+  )
+}
+
+function EditorPage(): ReactElement | null {
+  const settings = useAppStore((s) => s.settings)
+  const updateSettings = useAppStore((s) => s.updateSettings)
+  const [sizeDraft, setSizeDraft] = useState(String(settings?.editorFontSize ?? 14))
+  // Only fonts that are really installed are offered.
+  const [installed, setInstalled] = useState<string[]>([])
+
+  useEffect(() => {
+    const check = (name: string): boolean => {
+      try {
+        return document.fonts.check(`16px "${name}"`)
+      } catch {
+        return false
+      }
+    }
+    void document.fonts.ready.then(() => setInstalled(EDITOR_FONTS.filter(check)))
+  }, [])
+
+  if (!settings) return null
+  const current = settings.editorFontFamily
+  const options = current && !installed.includes(current) ? [current, ...installed] : installed
+
+  return (
+    <>
+      <Section title="Текст заметок">
+        <SettingsGroup>
+          <SettingsRow
+            title="Шрифт"
+            description="Применяется только к тексту в редакторе. По умолчанию — шрифт приложения."
+            control={
+              <Select aria-label="Шрифт редактора" value={current} onChange={(e) => void updateSettings({ editorFontFamily: e.target.value })} wrapperClassName="w-56">
+                <option value="">Как в приложении</option>
+                {options.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </Select>
+            }
+          />
+          <SettingsRow
+            title="Размер шрифта"
+            description={`От ${FONT_SIZE_MIN} до ${FONT_SIZE_MAX} px.`}
+            control={
+              <NumberField
+                aria-label="Размер шрифта, px"
+                min={FONT_SIZE_MIN}
+                max={FONT_SIZE_MAX}
+                suffix="px"
+                value={sizeDraft}
+                onChange={setSizeDraft}
+                onCommit={() => {
+                  const size = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(Number(sizeDraft)) || 14))
+                  setSizeDraft(String(size))
+                  void updateSettings({ editorFontSize: size })
+                }}
+              />
+            }
+          />
+        </SettingsGroup>
+      </Section>
+      <Section title="Пример">
+        <div
+          className="rich-content rounded-xl border border-line p-4 text-fg"
+          style={
+            {
+              '--editor-font': current ? `"${current}", sans-serif` : 'inherit',
+              '--editor-size': `${settings.editorFontSize}px`
+            } as CSSProperties
+          }
+        >
+          <p>Так будет выглядеть текст заметки: обычный абзац, <strong>жирный</strong> и <em>курсив</em>.</p>
+          <pre>
+            <code>const code = 'всегда моноширинный'</code>
+          </pre>
+        </div>
       </Section>
     </>
   )

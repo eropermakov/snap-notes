@@ -14,8 +14,15 @@ import UpdateBanner from './components/UpdateBanner'
 import ToastContainer from './components/ToastContainer'
 import CommandPalette from './components/CommandPalette'
 import ChatGptWelcome from './components/ai/ChatGptWelcome'
+import TagEditorDialog from './components/notes/TagEditorDialog'
+import { useAppFlush } from './hooks/useAppFlush'
 
 const SIDEBAR_WIDTH = { narrow: 260, normal: 248, wide: 272 } as const
+
+function isTextField(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  return Boolean(el && (el.isContentEditable || el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement))
+}
 
 /** App-level shortcuts. Ignored while a modal dialog is open. */
 function useGlobalShortcuts(): void {
@@ -42,6 +49,11 @@ function useGlobalShortcuts(): void {
       } else if (e.code === 'Comma') {
         e.preventDefault()
         s.openSettings()
+      } else if ((key === 'a' || e.code === 'KeyA') && s.selection.selected.length > 0 && !isTextField(e.target)) {
+        // With cards selected, Ctrl+A selects every card of the current list.
+        e.preventDefault()
+        const ids = Array.from(document.querySelectorAll<HTMLElement>('[data-note-id]')).map((el) => el.dataset.noteId as string)
+        s.selectAll(ids)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -63,8 +75,11 @@ export default function MainApp(): ReactElement {
   const notesFilter = useAppStore((s) => s.notesFilter)
   const settingsCategory = useAppStore((s) => s.settingsCategory)
   const editorNoteId = useAppStore((s) => s.editorNoteId)
+  const autoCollapse = useAppStore((s) => s.settings?.autoCollapseSidebar ?? true)
+  const narrowSidebar = layout === 'narrow' && autoCollapse
 
   useGlobalShortcuts()
+  useAppFlush()
 
   useEffect(() => {
     void init()
@@ -76,12 +91,12 @@ export default function MainApp(): ReactElement {
 
   // Narrow windows turn the sidebar into a drawer without touching the saved docked preference.
   useEffect(() => {
-    setLayoutNarrow(layout === 'narrow')
-  }, [layout, setLayoutNarrow])
+    setLayoutNarrow(narrowSidebar)
+  }, [narrowSidebar, setLayoutNarrow])
 
   // The floating sidebar is a navigation drawer: dismiss it once the user has navigated.
   useEffect(() => {
-    if (layout === 'narrow') setSidebarOpen(false)
+    if (narrowSidebar) setSidebarOpen(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section, notesFilter, settingsCategory, editorNoteId])
 
@@ -102,7 +117,7 @@ export default function MainApp(): ReactElement {
         rail={<AppNavRail />}
         sidebar={sidebar}
         sidebarOpen={sidebarOpen}
-        sidebarOverlay={layout === 'narrow'}
+        sidebarOverlay={narrowSidebar}
         sidebarWidth={SIDEBAR_WIDTH[layout]}
         onDismissSidebar={() => setSidebarOpen(false)}
       >
@@ -116,6 +131,7 @@ export default function MainApp(): ReactElement {
       <AnimatePresence>{!showOnboarding && !showWhatsNew && <UpdateBanner />}</AnimatePresence>
       {!showOnboarding && <ChatGptWelcome />}
       <CommandPalette />
+      <TagEditorDialog />
       <ToastContainer />
     </>
   )

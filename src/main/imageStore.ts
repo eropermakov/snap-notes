@@ -95,3 +95,20 @@ export async function deleteNoteImage(noteId: string, imageId: string): Promise<
   const filePath = resolveSafeImagePath(noteId, imageId)
   if (filePath) await fs.rm(filePath, { force: true }).catch(() => {})
 }
+
+/** Copies the given images of one note into another note's folder under new ids (note duplication). */
+export async function copyNoteImages(fromNoteId: string, toNoteId: string, imageIds: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  if (!SAFE_ID.test(fromNoteId) || !SAFE_ID.test(toNoteId)) return map
+  for (const imageId of imageIds) {
+    const from = resolveSafeImagePath(fromNoteId, imageId)
+    if (!from) continue
+    try {
+      const data = await fs.readFile(from)
+      map.set(imageId, await saveDocumentImage(toNoteId, data))
+    } catch {
+      /* a missing file is simply not copied; its reference keeps the old id and shows nothing */
+    }
+  }
+  return map
+}

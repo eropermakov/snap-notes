@@ -139,6 +139,45 @@ export class RecognitionService {
       : this.textPath(local, prompts, mode)
   }
 
+  /**
+   * Re-recognizes a screenshot with a specific provider (`only`) or any vision provider except the
+   * ones in `exclude`. Used by "Retry with another AI"; the caller decides whether to keep the result.
+   */
+  async recognizeWith(png: Buffer, prompts: RecognitionPrompts, restrict: { only?: ProviderId; exclude?: ProviderId[] }): Promise<RecognitionOutput> {
+    const mode = this.getSettings().mode
+    let local = null as LocalOcrResult | null
+    const outcome = await this.manager.execute({
+      operation: 'OCR_VISION',
+      requiredCapabilities: ['vision'],
+      imageSent: restrict.only !== 'tesseract',
+      imageBytes: png.length,
+      includeLocalFallback: restrict.only === 'tesseract',
+      onlyProvider: restrict.only,
+      excludeProviders: restrict.exclude,
+      run: async (provider) => {
+        if (provider.local) {
+          local = await this.tesseract.recognizeDetailed(png)
+          return { text: local.text, model: 'tesseract' }
+        }
+        return provider.runStructuredOutput({ operation: 'OCR_VISION', prompt: prompts.vision, image: png, mimeType: 'image/png' })
+      }
+    })
+    if (this.manager.get(outcome.provider)?.local && local) {
+      return { ...this.output(outcome.result.text, false, 'tesseract', 'tesseract', outcome.notice, false, mode), localLines: (local as LocalOcrResult).lines }
+    }
+    if (outcome.result.format === 'markdown') {
+      return this.output(markdownToBlockJson(outcome.result.text), true, outcome.provider, outcome.result.model, outcome.notice, false, mode)
+    }
+    const raw = await this.ensureJson(outcome.provider, outcome.result.text, prompts.jsonRepair)
+    return this.output(raw, extractBlockItems(raw) !== null, outcome.provider, outcome.result.model, outcome.notice, false, mode)
+  }
+
+  /** Providers that can read an image right now, in routing order (for the retry list). */
+  async visionProviders(imageBytes: number): Promise<{ id: ProviderId; name: string; local: boolean }[]> {
+    const plan = await this.manager.plan(['vision'], true, 'OCR_VISION', imageBytes)
+    return plan.order.map((id) => ({ id, name: PROVIDER_NAMES[id], local: this.manager.get(id)?.local === true }))
+  }
+
   private async localOnly(png: Buffer, mode: AiSettings['mode']): Promise<RecognitionOutput> {
     let local = null as LocalOcrResult | null
     const outcome = await this.manager.execute({

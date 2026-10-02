@@ -257,7 +257,6 @@
 /* ---------- Rich note content ---------- */
 
 .rich-content {
-  font-size: 14px;
   line-height: 1.65;
 }
 .rich-content p {
@@ -347,6 +346,10 @@
   line-height: 1.55;
   -webkit-user-select: text;
   user-select: text;
+}
+.rich-content pre,
+.rich-content pre code {
+  font-family: 'Cascadia Mono', Consolas, ui-monospace, monospace;
 }
 .rich-content pre code {
   background: none;
@@ -443,4 +446,161 @@
 .rich-content li.todo-item.done {
   color: var(--text-muted);
   text-decoration: line-through;
+}
+
+/* ---------- Note colours (Google Keep style, calm) ----------
+ * Notes store a semantic id (coral, teal, …); the actual colours live here, once for the light and
+ * once for the dark themes. Text keeps --text-primary on every card background (contrast is tested
+ * in tests/theme/noteColors.test.ts).
+ */
+:root,
+[data-theme$='-light'] {
+  --note-coral-bg: #fbe3df;
+  --note-coral-border: #efc2bb;
+  --note-orange-bg: #fbe8d4;
+  --note-orange-border: #efcca4;
+  --note-yellow-bg: #faf0c4;
+  --note-yellow-border: #ebdc92;
+  --note-green-bg: #e0f1dd;
+  --note-green-border: #bcdcb6;
+  --note-teal-bg: #d6efec;
+  --note-teal-border: #a9d9d3;
+  --note-blue-bg: #dbe8fa;
+  --note-blue-border: #b0cbee;
+  --note-purple-bg: #e8ddf6;
+  --note-purple-border: #cdb8e8;
+
+  --search-hit-bg: rgba(251, 188, 4, 0.38);
+  --tag-bg: rgba(20, 22, 20, 0.06);
+  --tag-fg: var(--text-secondary);
+}
+
+[data-theme$='-dark'] {
+  --note-coral-bg: #3b2625;
+  --note-coral-border: #5d3b39;
+  --note-orange-bg: #3b2d1f;
+  --note-orange-border: #5c4630;
+  --note-yellow-bg: #38331c;
+  --note-yellow-border: #594f2b;
+  --note-green-bg: #20342a;
+  --note-green-border: #33523f;
+  --note-teal-bg: #1b3534;
+  --note-teal-border: #2c5654;
+  --note-blue-bg: #202e47;
+  --note-blue-border: #33496f;
+  --note-purple-bg: #30263f;
+  --note-purple-border: #4b3b64;
+
+  --search-hit-bg: rgba(253, 214, 99, 0.34);
+  --tag-bg: rgba(205, 220, 245, 0.1);
+  --tag-fg: var(--text-secondary);
+}
+
+.note-color-coral { --card-bg: var(--note-coral-bg); --card-border: var(--note-coral-border); }
+.note-color-orange { --card-bg: var(--note-orange-bg); --card-border: var(--note-orange-border); }
+.note-color-yellow { --card-bg: var(--note-yellow-bg); --card-border: var(--note-yellow-border); }
+.note-color-green { --card-bg: var(--note-green-bg); --card-border: var(--note-green-border); }
+.note-color-teal { --card-bg: var(--note-teal-bg); --card-border: var(--note-teal-border); }
+.note-color-blue { --card-bg: var(--note-blue-bg); --card-border: var(--note-blue-border); }
+.note-color-purple { --card-bg: var(--note-purple-bg); --card-border: var(--note-purple-border); }
+
+/* A coloured card: tinted background, matching outline, slightly deeper on hover / when open. */
+/* On a tinted card the quietest text is one step stronger, so dates and tags stay readable. */
+.note-card[class*='note-color-'] {
+  --text-muted: var(--text-secondary);
+}
+
+.note-card {
+  background: var(--card-bg, var(--surface-1));
+  border-color: var(--card-border, var(--border-card));
+}
+.note-card:hover {
+  background: color-mix(in srgb, var(--card-bg, var(--surface-2)) 92%, var(--text-primary));
+  border-color: var(--border-strong);
+}
+.note-card[data-open='true'] {
+  background: color-mix(in srgb, var(--card-bg, var(--surface-selected)) 88%, var(--text-primary));
+  border-color: var(--border-strong);
+}
+.note-card[data-selected='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* Colour swatch in the picker (the ring + check carry the "selected" meaning, not colour alone). */
+.swatch {
+  background: var(--swatch-bg, var(--surface-2));
+  border: 1.5px solid var(--swatch-border, var(--border-strong));
+}
+.swatch-coral { --swatch-bg: var(--note-coral-bg); --swatch-border: var(--note-coral-border); }
+.swatch-orange { --swatch-bg: var(--note-orange-bg); --swatch-border: var(--note-orange-border); }
+.swatch-yellow { --swatch-bg: var(--note-yellow-bg); --swatch-border: var(--note-yellow-border); }
+.swatch-green { --swatch-bg: var(--note-green-bg); --swatch-border: var(--note-green-border); }
+.swatch-teal { --swatch-bg: var(--note-teal-bg); --swatch-border: var(--note-teal-border); }
+.swatch-blue { --swatch-bg: var(--note-blue-bg); --swatch-border: var(--note-blue-border); }
+.swatch-purple { --swatch-bg: var(--note-purple-bg); --swatch-border: var(--note-purple-border); }
+
+/* ---------- Tags, search highlight ---------- */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  border-radius: 6px;
+  background: var(--tag-bg);
+  color: var(--tag-fg);
+  padding: 1px 7px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+mark.search-hit {
+  background: var(--search-hit-bg);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+/* Matches inside the open note (CSS Custom Highlight API: no DOM changes in the editor). */
+::highlight(snap-search) {
+  background-color: var(--search-hit-bg);
+  color: inherit;
+}
+
+/* ---------- Editor font settings (the editor only; code stays monospace) ---------- */
+.rich-content {
+  font-family: var(--editor-font, inherit);
+  font-size: var(--editor-size, 14px);
+}
+
+/* ---------- Collapsible long blocks ---------- */
+.rich-content .block-collapsed {
+  max-height: 7.5em;
+  overflow: hidden;
+  position: relative;
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+.rich-content pre.block-collapsed {
+  overflow: hidden;
+}
+
+/* ---------- Links in notes ---------- */
+.rich-content a[href] {
+  cursor: pointer;
+}
+
+/* ---------- Floating note / quick note windows ---------- */
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+@layer utilities {
+  .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .line-clamp-4 { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .line-clamp-7 { display: -webkit-box; -webkit-line-clamp: 7; -webkit-box-orient: vertical; overflow: hidden; }
+  .line-clamp-14 { display: -webkit-box; -webkit-line-clamp: 14; -webkit-box-orient: vertical; overflow: hidden; }
 }

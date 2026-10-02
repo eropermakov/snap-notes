@@ -11,6 +11,7 @@ import { loadRoute } from './windows'
  */
 
 const AUTO_HIDE_MS = 5000
+const SUGGEST_HIDE_MS = 9000
 const MARGIN = 16
 const WIDTH = 360
 
@@ -19,6 +20,7 @@ export interface HudHandlers {
   open: (noteId: string) => void
   sessionNext: () => void
   sessionFinish: () => void
+  ocrClipboard: () => void
 }
 
 let win: BrowserWindow | null = null
@@ -90,15 +92,18 @@ function ensureWindow(): { win: BrowserWindow; ready: Promise<void> } {
 function scheduleHide(): void {
   if (hideTimer) clearTimeout(hideTimer)
   hideTimer = null
-  if (state.kind !== 'added' && state.kind !== 'message') return
-  hideTimer = setTimeout(() => {
-    if (hovering) {
-      scheduleHide()
-      return
-    }
-    // In a session the HUD falls back to the session counter instead of disappearing.
-    show(sessionState ? { kind: 'session', session: sessionState } : { kind: 'hidden' })
-  }, AUTO_HIDE_MS)
+  if (state.kind !== 'added' && state.kind !== 'message' && state.kind !== 'suggest') return
+  hideTimer = setTimeout(
+    () => {
+      if (hovering) {
+        scheduleHide()
+        return
+      }
+      // In a session the HUD falls back to the session counter instead of disappearing.
+      show(sessionState ? { kind: 'session', session: sessionState } : { kind: 'hidden' })
+    },
+    state.kind === 'suggest' ? SUGGEST_HIDE_MS : AUTO_HIDE_MS
+  )
 }
 
 export function show(next: HudState): void {
@@ -161,6 +166,10 @@ export function initHud(preloadPath: string, actions: HudHandlers): void {
       case 'open':
         if (typeof action.noteId === 'string') handlers?.open(action.noteId)
         hide()
+        break
+      case 'ocrClipboard':
+        hide()
+        handlers?.ocrClipboard()
         break
       case 'sessionNext':
         handlers?.sessionNext()

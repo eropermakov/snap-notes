@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import type { OcrSource } from '@shared/blocks'
+import { QUALITY_LABELS } from '@shared/ocrQuality'
+import { providerBadgeLabel } from '@shared/noteStats'
 import { useAppStore } from '../../store/useAppStore'
 import { Button, Menu, MenuItem, MenuLabel, MenuSeparator, Modal, Popover, Spinner, cn } from '../../ui'
-import { CopyIcon, EyeIcon, InfoIcon, ScanTextIcon, SparkleIcon, TrashIcon, MoreIcon } from '../icons'
+import { CopyIcon, EyeIcon, InfoIcon, RefreshIcon, ScanTextIcon, SparkleIcon, TrashIcon, MoreIcon } from '../icons'
+import RetryModal from './RetryModal'
 import { sanitizeHtmlForDisplay } from '../../utils/sanitizeHtml'
 import { sourceOfBlock, topLevelBlock } from './caret'
 
@@ -58,6 +61,7 @@ const AI_ITEMS: { action: AiAction; label: string }[] = [
 export default function FragmentTools({ root, wrapper, noteId, sources, flush, onChange }: Props): ReactElement | null {
   const aiMode = useAppStore((s) => s.settings?.ai.mode)
   const pushToast = useAppStore((s) => s.pushToast)
+  const [retryFor, setRetryFor] = useState<string | null>(null)
   const [hovered, setHovered] = useState<Hovered | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -66,7 +70,7 @@ export default function FragmentTools({ root, wrapper, noteId, sources, flush, o
   const [reviewFor, setReviewFor] = useState<string | null>(null)
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const locked = menuOpen || busy || preview !== null
+  const locked = menuOpen || busy || preview !== null || retryFor !== null
 
   const measure = useCallback(
     (sourceId: string): Hovered | null => {
@@ -106,9 +110,20 @@ export default function FragmentTools({ root, wrapper, noteId, sources, flush, o
     }
   }, [root, sources, measure, locked])
 
-  if (!hovered || !root) return null
+  if (!hovered || !root) return <RetryModal open={retryFor !== null} noteId={noteId} sourceId={retryFor} flush={flush} onClose={() => setRetryFor(null)} />
   const { sourceId } = hovered
   const source = sources[sourceId]
+  const badge = providerBadgeLabel(source?.method)
+  // Quality is shown only when the recognizer reported real data (never guessed for AI output).
+  const qualityLabel = source?.quality ? QUALITY_LABELS[source.quality] : null
+  const details = [
+    source?.method ? `Источник: ${source.method}` : '',
+    source?.model && source.model.toLowerCase() !== source.method?.toLowerCase() ? `Модель: ${source.model}` : '',
+    source?.capturedAt ? `Снято: ${new Date(source.capturedAt).toLocaleString('ru-RU')}` : '',
+    qualityLabel ? `Качество: ${qualityLabel}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n')
   const imageUrl = originalSrc(noteId, source)
   const offline = aiMode === 'offline'
   const translate = translationTarget(fragmentText(root, sourceId))
@@ -134,23 +149,48 @@ export default function FragmentTools({ root, wrapper, noteId, sources, flush, o
         className="pointer-events-none absolute -left-3 w-[2px] rounded-full bg-accent opacity-50"
         style={{ top: hovered.top, height: hovered.height }}
       />
-      <button
-        ref={setAnchor}
-        type="button"
-        aria-label="Действия с распознанным фрагментом"
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        onMouseEnter={() => hideTimer.current && clearTimeout(hideTimer.current)}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => setMenuOpen((v) => !v)}
-        className={cn(
-          'absolute -right-2 flex h-6 w-6 items-center justify-center rounded-md border border-line bg-elevated text-fg-secondary shadow-popover transition-colors duration-fast hover:text-fg',
-          menuOpen && 'text-accent'
-        )}
+      <div
+        className="absolute -right-2 flex items-center gap-1"
         style={{ top: hovered.top }}
+        onMouseEnter={() => hideTimer.current && clearTimeout(hideTimer.current)}
       >
-        {busy ? <Spinner className="h-3 w-3" /> : <MoreIcon className="h-3.5 w-3.5" />}
-      </button>
+        {badge && (
+          <span
+            title={details}
+            className="flex h-6 items-center gap-1 rounded-md border border-line bg-elevated px-1.5 text-xs text-fg-secondary shadow-popover"
+          >
+            {badge}
+            {qualityLabel && <span className="text-fg-muted">· {qualityLabel}</span>}
+          </span>
+        )}
+        {imageUrl && (
+          <button
+            type="button"
+            aria-label="Оригинал скриншота"
+            title="Оригинал"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setPreview(sourceId)}
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-line bg-elevated text-fg-secondary shadow-popover transition-colors duration-fast hover:text-fg"
+          >
+            <EyeIcon className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <button
+          ref={setAnchor}
+          type="button"
+          aria-label="Действия с распознанным фрагментом"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setMenuOpen((v) => !v)}
+          className={cn(
+            'flex h-6 w-6 items-center justify-center rounded-md border border-line bg-elevated text-fg-secondary shadow-popover transition-colors duration-fast hover:text-fg',
+            menuOpen && 'text-accent'
+          )}
+        >
+          {busy ? <Spinner className="h-3 w-3" /> : <MoreIcon className="h-3.5 w-3.5" />}
+        </button>
+      </div>
 
       <Menu open={menuOpen} onClose={() => setMenuOpen(false)} anchor={anchor} placement="bottom-end" aria-label="Распознанный фрагмент">
         <MenuLabel>Распознано с экрана</MenuLabel>
@@ -162,6 +202,9 @@ export default function FragmentTools({ root, wrapper, noteId, sources, flush, o
         </MenuItem>
         <MenuItem icon={<InfoIcon />} onSelect={() => setInfoFor(sourceId)}>
           Источник
+        </MenuItem>
+        <MenuItem icon={<RefreshIcon />} disabled={!imageUrl} onSelect={() => setRetryFor(sourceId)}>
+          Повторить другим ИИ…
         </MenuItem>
         <MenuSeparator />
         <MenuItem
@@ -221,6 +264,7 @@ export default function FragmentTools({ root, wrapper, noteId, sources, flush, o
       </Popover>
 
       <SourceInfoModal source={infoFor ? sources[infoFor] : undefined} onClose={() => setInfoFor(null)} />
+      <RetryModal open={retryFor !== null} noteId={noteId} sourceId={retryFor} flush={flush} onClose={() => setRetryFor(null)} />
       <ReviewModal
         open={reviewFor !== null}
         imageUrl={reviewFor ? originalSrc(noteId, sources[reviewFor]) : null}

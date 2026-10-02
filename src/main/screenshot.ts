@@ -1,6 +1,8 @@
 import { desktopCapturer, screen, ipcMain, BrowserWindow } from 'electron'
 import { IPC } from '../shared/ipc'
 import { createOverlayWindow } from './windows'
+import { currentDisplays, getLastRegion, setLastRegion } from './lastCapture'
+import { validateCaptureRegion, type CaptureRegion, type RegionCheck } from '../shared/captureRegion'
 
 let overlayWin: BrowserWindow | null = null
 let overlayReadyPromise: Promise<void> | null = null
@@ -143,6 +145,14 @@ export function captureRegionAtCursor(preloadPath: string, mode: OverlayMode = {
               width: Math.max(1, Math.round(rect.width * ratioX)),
               height: Math.max(1, Math.round(rect.height * ratioY))
             }
+            setLastRegion({
+              displayId: display.id,
+              displayBounds: { ...display.bounds },
+              scaleFactor: display.scaleFactor,
+              cropRect,
+              imageSize: { width: imageSize.width, height: imageSize.height },
+              capturedAt: Date.now()
+            })
             const cropped = source.thumbnail.crop(cropRect)
             finish(cropped.toPNG())
           }
@@ -255,5 +265,32 @@ export async function captureDisplayRegion(
     return source.thumbnail.crop(cropRect).toPNG()
   } catch {
     return null
+  }
+}
+
+export type RepeatResult = { ok: true; buffer: Buffer } | { ok: false; reason: Exclude<RegionCheck, { ok: true }>['reason'] }
+
+/**
+ * Captures the same screen area as the last region capture. If the monitor, its resolution or the
+ * layout changed (or the screenshot has a different size), nothing is captured and the reason is
+ * returned so the caller can offer a normal selection.
+ */
+export async function captureRepeatRegion(region: CaptureRegion | null = getLastRegion()): Promise<RepeatResult> {
+  const check = validateCaptureRegion(region, currentDisplays())
+  if (!check.ok || !region) return { ok: false, reason: check.ok ? 'none' : check.reason }
+  const display = screen.getAllDisplays().find((d) => d.id === region.displayId)
+  if (!display) return { ok: false, reason: 'display_missing' }
+  try {
+    const source = await getSourceForDisplay(display)
+    if (!source) return { ok: false, reason: 'display_missing' }
+    const size = source.thumbnail.getSize()
+    if (Math.abs(size.width - region.imageSize.width) > 2 || Math.abs(size.height - region.imageSize.height) > 2) {
+      return { ok: false, reason: 'layout_changed' }
+    }
+    const cropped = source.thumbnail.crop(region.cropRect)
+    if (cropped.isEmpty()) return { ok: false, reason: 'invalid' }
+    return { ok: true, buffer: cropped.toPNG() }
+  } catch {
+    return { ok: false, reason: 'invalid' }
   }
 }

@@ -17,6 +17,11 @@ import { cn } from './cn'
 
 const MenuContext = createContext<{ close: () => void }>({ close: () => undefined })
 
+/** Lets custom menu rows (colour swatches…) close the menu after they act. */
+export function useMenuClose(): () => void {
+  return useContext(MenuContext).close
+}
+
 interface MenuProps {
   open: boolean
   onClose: () => void

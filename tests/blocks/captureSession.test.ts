@@ -17,6 +17,9 @@ const note = (id: string, title = ''): Note => ({
   body: '',
   emoji: null,
   pinned: false,
+  favorite: false,
+  color: 'default',
+  tags: [],
   createdAt: 1,
   updatedAt: 1,
   deletedAt: null,
@@ -38,6 +41,8 @@ vi.mock('../../src/main/notesStore', () => ({
     notes.set(id, updated)
     return updated
   },
+  setAutoTitle: async (id: string) => notes.get(id),
+  discardIfEmptyAuto: async () => false,
   removeSource: async (id: string, sourceId: string) => {
     const n = notes.get(id)!
     const updated = { ...n, blocks: (n.blocks ?? []).filter((b) => b.sourceId !== sourceId) }
@@ -53,8 +58,10 @@ vi.mock('../../src/main/screenshot', () => ({
     overlayModes.push(mode)
     return screenshotResult
   },
-  captureFullscreenAtCursor: async () => screenshotResult
+  captureFullscreenAtCursor: async () => screenshotResult,
+  captureRepeatRegion: async () => ({ ok: false, reason: 'none' })
 }))
+vi.mock('../../src/main/lastCapture', () => ({ getLastRegion: () => null }))
 let captureCounter = 0
 vi.mock('../../src/main/captureContent', () => ({
   recognizeCapture: async () => {
@@ -65,7 +72,8 @@ vi.mock('../../src/main/captureContent', () => ({
       output: { notice: null, offlineFallback: false }
     }
   },
-  discardCapture: async () => {}
+  discardCapture: async () => {},
+  heuristicTitle: () => 'Заголовок'
 }))
 vi.mock('../../src/main/windowInfo', () => ({ readForegroundWindow: async () => ({}) }))
 vi.mock('../../src/main/screenshotCache', () => ({ saveToCache: async () => {} }))

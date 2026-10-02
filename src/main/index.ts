@@ -1,7 +1,12 @@
 import { app, BrowserWindow, ipcMain, Notification } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { createMainWindow } from './windows'
+import { createMainWindow, MAIN_WINDOW_DEFAULTS } from './windows'
+import { resolveSavedState, trackWindowState } from './windowState'
+import { broadcastToNoteWindows, noteWindows, registerNoteWindow, setMainWindowGetter } from './noteWindows'
+import { destroyQuickNote, initQuickNote, prewarmQuickNote, setQuickNoteBackground, toggleQuickNote } from './quickNote'
+import { initFloatingNotes, setFloatingBackground } from './floatingNotes'
+import { markClipboardImageHandled, readClipboardPng, startClipboardWatch, stopClipboardWatch } from './clipboardOcr'
 import { registerIpcHandlers } from './ipc'
 import { initNotesStore, purgeExpiredTrash } from './notesStore'
 import { getSettings, updateSettings, runAiMigration } from './settingsStore'
@@ -13,11 +18,14 @@ import {
   getActiveNoteId,
   initCapturePipeline,
   runCapture,
+  runImageOcr,
+  runRepeatCapture,
   setActiveNoteId,
   toggleCaptureSession,
   undoCapture
 } from './capturePipeline'
 import { destroyHud, initHud, prewarmHud } from './hud'
+import * as hud from './hud'
 import { copyNote } from './noteExport'
 import * as notesStore from './notesStore'
 import { initDocumentCapture, runDocumentCapture } from './documentCapture'
@@ -74,8 +82,51 @@ function hotkeyHandlers(): HotkeyHandlers {
     longScreenshot: () => void toggleLongScreenshot(preloadPath),
     copyForAi: () => void copyCurrentNoteForAi(),
     openApp: () => showMainWindow(),
-    session: () => void toggleCaptureSession(preloadPath)
+    session: () => void toggleCaptureSession(preloadPath),
+    quickNote: () => toggleQuickNote(),
+    repeatCapture: () => void runRepeatCapture(preloadPath),
+    ocrClipboard: () => void ocrClipboardImage(),
+    globalSearch: () => {
+      showMainWindow()
+      mainWindow?.webContents.send(IPC.ON_NAVIGATE, { view: 'search' })
+    }
   }
+}
+
+/** "OCR clipboard image": recognizes the picture in the clipboard into the open note / a new one. */
+async function ocrClipboardImage(): Promise<void> {
+  const png = readClipboardPng()
+  if (!png) {
+    hud.show({ kind: 'message', tone: 'warning', text: 'В буфере обмена нет изображения.' })
+    return
+  }
+  markClipboardImageHandled()
+  await runImageOcr(png, preloadPath)
+}
+
+/** Starts / stops the clipboard watcher according to "Suggest OCR for clipboard images". */
+function applyClipboardWatch(settings: AppSettings): void {
+  if (!settings.suggestClipboardOcr) {
+    stopClipboardWatch()
+    return
+  }
+  startClipboardWatch(() => {
+    // A quiet, auto-hiding suggestion in the HUD: it never takes focus and is offered once per image.
+    hud.show({ kind: 'suggest', text: 'В буфере обмена картинка' })
+  })
+}
+
+function makeMainWindow(): BrowserWindow {
+  const settings = getSettings()
+  const win = createMainWindow(
+    preloadPath,
+    iconPath,
+    backgroundColorForTheme(settings.theme),
+    resolveSavedState(settings.windowState, MAIN_WINDOW_DEFAULTS)
+  )
+  registerNoteWindow(win)
+  trackWindowState(win, (saved) => updateSettings({ windowState: saved }))
+  return win
 }
 
 function applyHotkeys(settings: AppSettings): HotkeyRegistrationResult {
@@ -84,7 +135,7 @@ function applyHotkeys(settings: AppSettings): HotkeyRegistrationResult {
 
 function showMainWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
-    mainWindow = createMainWindow(preloadPath, iconPath, backgroundColorForTheme(getSettings().theme))
+    mainWindow = makeMainWindow()
     attachWindowLifecycle(mainWindow)
     return
   }
@@ -101,6 +152,9 @@ function applyTray(settings: AppSettings): void {
         onOpen: showMainWindow,
         onNewNoteCapture: () => void runCapture('region', preloadPath),
         onNewDocumentCapture: () => void runDocumentCapture(preloadPath),
+        onQuickNote: () => toggleQuickNote(),
+        onRepeatCapture: () => void runRepeatCapture(preloadPath),
+        onOcrClipboard: () => void ocrClipboardImage(),
         onToggleLongScreenshot: () => void toggleLongScreenshot(preloadPath),
         onQuit: () => {
           isQuitting = true
@@ -142,8 +196,15 @@ async function handleSettingsChanged(
     providerSystem?.manager.emit()
   }
 
-  if (next.theme !== prev.theme && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setBackgroundColor(backgroundColorForTheme(next.theme))
+  if (next.theme !== prev.theme) {
+    const color = backgroundColorForTheme(next.theme)
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(color)
+    setQuickNoteBackground(color)
+    setFloatingBackground(color)
+  }
+
+  if (next.suggestClipboardOcr !== prev.suggestClipboardOcr) {
+    applyClipboardWatch(next)
   }
 
   if (next.launchAtStartup !== prev.launchAtStartup || next.minimizeToTray !== prev.minimizeToTray) {
@@ -167,6 +228,27 @@ function attachWindowLifecycle(win: BrowserWindow): void {
   })
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
+  })
+}
+
+/** Asks every note window to save pending edits; resolves when all answered (or after 1.5 s). */
+function requestRendererFlush(): Promise<void> {
+  const wins = noteWindows()
+  if (wins.length === 0) return Promise.resolve()
+  return new Promise((resolve) => {
+    let waiting = wins.length
+    const timer = setTimeout(done, 1500)
+    function done(): void {
+      clearTimeout(timer)
+      ipcMain.removeListener(IPC.APP_FLUSHED, onAck)
+      resolve()
+    }
+    function onAck(): void {
+      waiting -= 1
+      if (waiting <= 0) done()
+    }
+    ipcMain.on(IPC.APP_FLUSHED, onAck)
+    broadcastToNoteWindows(IPC.APP_FLUSH)
   })
 }
 
@@ -202,8 +284,11 @@ if (!gotLock) {
     }
     void system.manager.refreshAll().then(() => system.manager.warmModels())
 
-    mainWindow = createMainWindow(preloadPath, iconPath, backgroundColorForTheme(getSettings().theme))
+    setMainWindowGetter(() => mainWindow)
+    mainWindow = makeMainWindow()
     attachWindowLifecycle(mainWindow)
+    initQuickNote(preloadPath, backgroundColorForTheme(getSettings().theme))
+    initFloatingNotes(preloadPath, iconPath, backgroundColorForTheme(getSettings().theme))
     initCapturePipeline(() => mainWindow, system.recognition)
     initDocumentCapture(() => mainWindow, system.recognition)
     initLongScreenshot(() => mainWindow, system.recognition)
@@ -217,14 +302,18 @@ if (!gotLock) {
         mainWindow?.webContents.send(IPC.ON_NAVIGATE, { view: 'editor', noteId })
       },
       sessionNext: () => captureNextInSession(),
-      sessionFinish: () => finishCaptureSession()
+      sessionFinish: () => finishCaptureSession(),
+      ocrClipboard: () => void ocrClipboardImage()
     })
     prewarmHud()
+    prewarmQuickNote()
     initUpdater(() => mainWindow)
 
     ipcMain.handle(IPC.APP_CAPTURE_DOCUMENT, () => void runDocumentCapture(preloadPath))
 
     registerIpcHandlers({
+      recognition: system.recognition,
+      preloadPath,
       getMainWindow: () => mainWindow,
       setActiveNoteId,
       onSettingsChanged: handleSettingsChanged,
@@ -243,6 +332,7 @@ if (!gotLock) {
     const settings = getSettings()
     applyHotkeys(settings)
     applyTray(settings)
+    applyClipboardWatch(settings)
     syncAutoLaunch(settings.launchAtStartup, settings.minimizeToTray).catch((err) => {
       console.error('[auto-launch] initial sync failed', err)
     })
@@ -260,12 +350,22 @@ if (!gotLock) {
     })
   })
 
-  app.on('before-quit', () => {
+  let flushedBeforeQuit = false
+  app.on('before-quit', (event) => {
     isQuitting = true
+    // Pending edits are written first: windows are asked to flush, then the quit continues.
+    if (!flushedBeforeQuit && noteWindows().length > 0) {
+      flushedBeforeQuit = true
+      event.preventDefault()
+      void requestRendererFlush().finally(() => app.quit())
+      return
+    }
     unregisterAllHotkeys()
+    stopClipboardWatch()
     cancelLongScreenshotSession()
     providerSystem?.dispose()
     destroyHud()
+    destroyQuickNote()
     void terminateLocalOcr()
   })
 

@@ -1,6 +1,6 @@
 {
   "name": "snap-notes",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Snap Notes — заметки в стиле Google Keep со скриншот-OCR через Gemini",
   "main": "./out/main/index.js",
   "author": "Snap Notes",

@@ -46,8 +46,12 @@
 | Весь экран | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> |
 | Скопировать заметку для ChatGPT или Claude | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> |
 | Открыть Snap Notes | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>N</kbd> |
+| Быстрая заметка — маленькое окно поверх любой программы | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Q</kbd> |
+| Повторить последний захват — та же область без выделения | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>R</kbd> |
+| Распознать картинку из буфера обмена | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>O</kbd> |
+| Поиск по заметкам | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>K</kbd> |
 
-Внутри приложения: <kbd>Ctrl</kbd>+<kbd>K</kbd> — найти любую заметку или действие, <kbd>Ctrl</kbd>+<kbd>N</kbd> — новая заметка, <kbd>Ctrl</kbd>+<kbd>F</kbd> — поиск. Действия с заметкой — по правому клику. Все хоткеи меняются в настройках.
+Внутри приложения: <kbd>Ctrl</kbd>+<kbd>K</kbd> — найти любую заметку или действие, <kbd>Ctrl</kbd>+<kbd>N</kbd> — новая заметка, <kbd>Ctrl</kbd>+<kbd>F</kbd> — поиск, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> — вставить как обычный текст. Закрепление, избранное, цвет, теги, дублирование и экспорт — по правому клику на заметке; несколько заметок выбираются <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+клик. Все хоткеи меняются в настройках.
 
 ## Что умеет
 

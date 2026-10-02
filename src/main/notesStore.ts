@@ -3,10 +3,13 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import { Note } from '../shared/types'
+import { addTags, isContentPatch, normalizeColor, normalizeTags, needsMetaMigration, readNoteMeta, removeTags, type NoteColor } from '../shared/noteMeta'
+import { isDiscardableAutoNote } from '../shared/noteLifecycle'
+import { collectImageIds, rewriteImageRefs } from '../shared/imageRefs'
 import { looksLikeHtml, plainTextToHtml } from '../shared/htmlText'
 import { NOTE_FORMAT_VERSION, blocksToHtml, htmlToBlocks, normalizeBlocks, type Block, type OcrSource } from '../shared/blocks'
 import { sanitizeNoteHtml } from './htmlSanitize'
-import { deleteNoteImages, deleteAllImages, deleteNoteImage } from './imageStore'
+import { deleteNoteImages, deleteAllImages, deleteNoteImage, copyNoteImages, saveDocumentImage, imageSrc } from './imageStore'
 import { logEvent } from './logger'
 
 let notesDir: string | null = null
@@ -62,7 +65,8 @@ function sanitizeSources(value: unknown): Record<string, OcrSource> {
       ...(str(s.url, 2000) ? { url: str(s.url, 2000) } : {}),
       ...(str(s.method, 80) ? { method: str(s.method, 80) } : {}),
       ...(str(s.model, 120) ? { model: str(s.model, 120) } : {}),
-      ...(str(s.mode, 40) ? { mode: str(s.mode, 40) } : {})
+      ...(str(s.mode, 40) ? { mode: str(s.mode, 40) } : {}),
+      ...(s.quality === 'HIGH' || s.quality === 'MEDIUM' || s.quality === 'LOW' ? { quality: s.quality } : {})
     }
     result[key] = source
   }
@@ -70,20 +74,21 @@ function sanitizeSources(value: unknown): Record<string, OcrSource> {
 }
 
 /**
- * Copies the given note files, unchanged, into userData/backups/notes-v1-<timestamp>/ before the
- * first rewrite to format v2. Returns false if the copy could not be completed.
+ * Copies the given note files, unchanged, into userData/backups/notes-pre-migration-<timestamp>/
+ * before they are first rewritten (format v1 -> v2, or metadata added in 1.6). Returns false if the
+ * copy could not be completed.
  */
 async function backupBeforeMigration(dir: string, files: string[]): Promise<boolean> {
   try {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const backupDir = path.join(app.getPath('userData'), 'backups', `notes-v1-${stamp}`)
+    const backupDir = path.join(app.getPath('userData'), 'backups', `notes-pre-migration-${stamp}`)
     await fs.mkdir(backupDir, { recursive: true })
     for (const file of files) await fs.copyFile(path.join(dir, file), path.join(backupDir, file))
     const copied = (await fs.readdir(backupDir)).length
-    logEvent('notes', { migration: 'v1->v2', notes: files.length, backup: path.basename(backupDir), copied })
+    logEvent('notes', { migration: 'notes', notes: files.length, backup: path.basename(backupDir), copied })
     return copied === files.length
   } catch (err) {
-    logEvent('notes', { migration: 'v1->v2', backupFailed: err instanceof Error ? err.name : 'unknown' })
+    logEvent('notes', { migration: 'notes', backupFailed: err instanceof Error ? err.name : 'unknown' })
     return false
   }
 }
@@ -103,10 +108,11 @@ export async function initNotesStore(): Promise<void> {
     }
   }
 
-  // v1 → v2: back up the originals first. If the backup fails, notes are converted in memory only
-  // and the files on disk stay exactly as they were (the next edit of a note saves it as v2).
-  const legacy = loaded.filter((l) => l.parsed.version !== NOTE_FORMAT_VERSION)
-  const mayRewrite = legacy.length === 0 || (await backupBeforeMigration(dir, legacy.map((l) => l.file)))
+  // v1 -> v2 and the 1.6 metadata (favorite / colour / tags): back up the originals first. If the
+  // backup fails, notes are converted in memory only and the files on disk stay exactly as they were
+  // (the next edit of a note saves it in the new format).
+  const outdated = loaded.filter((l) => l.parsed.version !== NOTE_FORMAT_VERSION || needsMetaMigration(l.parsed as Record<string, unknown>))
+  const mayRewrite = outdated.length === 0 || (await backupBeforeMigration(dir, outdated.map((l) => l.file)))
 
   for (const { parsed } of loaded) {
     let body = parsed.body ?? ''
@@ -119,17 +125,37 @@ export async function initNotesStore(): Promise<void> {
         body,
         emoji: parsed.emoji ?? null,
         pinned: parsed.pinned ?? false,
+        ...readNoteMetaFields(parsed),
         createdAt: parsed.createdAt ?? Date.now(),
         updatedAt: parsed.updatedAt ?? Date.now(),
         deletedAt: parsed.deletedAt ?? null
       }),
       ...(Object.keys(sources).length ? { sources } : {})
     }
-    const isLegacy = parsed.version !== NOTE_FORMAT_VERSION
-    if ((!isLegacy || mayRewrite) && JSON.stringify(note) !== JSON.stringify(parsed)) {
+    const isOutdated = parsed.version !== NOTE_FORMAT_VERSION || needsMetaMigration(parsed as Record<string, unknown>)
+    if ((!isOutdated || mayRewrite) && JSON.stringify(note) !== JSON.stringify(parsed)) {
       await persist(note)
     }
     cache.set(note.id, note)
+  }
+  await sweepEmptyAutoNotes()
+}
+
+function readNoteMetaFields(parsed: Partial<Note>): Pick<Note, 'favorite' | 'color' | 'tags' | 'autoCreated' | 'titleManual'> {
+  const meta = readNoteMeta(parsed as Record<string, unknown>)
+  return {
+    favorite: meta.favorite,
+    color: meta.color,
+    tags: meta.tags,
+    ...(meta.autoCreated ? { autoCreated: true } : {}),
+    ...(meta.titleManual ? { titleManual: true } : {})
+  }
+}
+
+/** Auto-created notes that were never filled (e.g. the app closed during a capture) are removed. */
+async function sweepEmptyAutoNotes(): Promise<void> {
+  for (const note of Array.from(cache.values())) {
+    if (isDiscardableAutoNote(note)) await permanentlyDeleteNote(note.id)
   }
 }
 
@@ -140,6 +166,10 @@ export function listNotes(): Note[] {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
       return b.updatedAt - a.updatedAt
     })
+}
+
+export function getAllNotes(): Note[] {
+  return Array.from(cache.values())
 }
 
 export function listTrash(): Note[] {
@@ -160,11 +190,16 @@ export async function createNote(partial?: Partial<Note>): Promise<Note> {
     body: '',
     emoji: null,
     pinned: false,
+    favorite: false,
+    color: 'default',
+    tags: [],
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
     ...partial
   }
+  note.color = normalizeColor(note.color)
+  note.tags = normalizeTags(note.tags)
   if (note.body) note.body = sanitizeNoteHtml(note.body)
   const stored = withBlocks(note)
   cache.set(stored.id, stored)
@@ -172,12 +207,22 @@ export async function createNote(partial?: Partial<Note>): Promise<Note> {
   return stored
 }
 
-export async function updateNote(id: string, patch: Partial<Note>): Promise<Note | null> {
+export interface UpdateOptions {
+  /** The patch comes from the user's editing (not from the app): affects auto-created / manual-title flags. */
+  user?: boolean
+}
+
+export async function updateNote(id: string, patch: Partial<Note>, options: UpdateOptions = {}): Promise<Note | null> {
   const existing = cache.get(id)
   if (!existing) return null
   // Sources are only changed by appendBlocks/removeSource (main process), never by a renderer patch.
-  const { blocks: patchBlocks, sources: _sources, version: _version, ...rest } = patch
-  let updated: Note = { ...existing, ...rest, id: existing.id, updatedAt: Date.now() }
+  const { blocks: patchBlocks, sources: _sources, version: _version, id: _id, createdAt: _created, deletedAt: _deleted, ...rest } = patch
+  let updated: Note = { ...existing, ...rest, id: existing.id, updatedAt: isContentPatch(patch) ? Date.now() : existing.updatedAt }
+  if (rest.color !== undefined) updated.color = normalizeColor(rest.color)
+  if (rest.tags !== undefined) updated.tags = normalizeTags(rest.tags)
+  if (rest.favorite !== undefined) updated.favorite = rest.favorite === true
+  if (rest.pinned !== undefined) updated.pinned = rest.pinned === true
+  if (typeof rest.title === 'string') updated.title = rest.title.slice(0, 500)
   if (patchBlocks !== undefined) {
     // Blocks are the source of truth for this change: the editor HTML is rendered from them.
     const blocks = normalizeBlocks(patchBlocks)
@@ -185,6 +230,161 @@ export async function updateNote(id: string, patch: Partial<Note>): Promise<Note
   } else if (patch.body !== undefined) {
     updated = withBlocks({ ...updated, body: sanitizeNoteHtml(patch.body) })
   }
+  if (options.user) {
+    // The user is working in this note: it is no longer a disposable auto-created one, and a title
+    // they typed is theirs for good.
+    if (updated.body !== existing.body || updated.title !== existing.title) delete updated.autoCreated
+    if (updated.title !== existing.title) {
+      if (updated.title.trim()) updated.titleManual = true
+      else delete updated.titleManual
+    }
+  }
+  cache.set(id, updated)
+  await persist(updated)
+  return updated
+}
+
+/** Local automatic title (first meaningful line). Never overrides a title the user typed. */
+export async function setAutoTitle(id: string, title: string): Promise<Note | null> {
+  const existing = cache.get(id)
+  if (!existing || existing.titleManual || existing.title.trim() || !title.trim()) return existing ?? null
+  return updateNote(id, { title })
+}
+
+export type BulkOp =
+  | { type: 'pin'; value: boolean }
+  | { type: 'favorite'; value: boolean }
+  | { type: 'color'; value: NoteColor }
+  | { type: 'addTags'; tags: string[] }
+  | { type: 'removeTags'; tags: string[] }
+
+/** One change applied to several notes. Missing / trashed notes are skipped. */
+export async function bulkUpdate(ids: string[], op: BulkOp): Promise<Note[]> {
+  const result: Note[] = []
+  for (const id of ids) {
+    const note = cache.get(id)
+    if (!note || note.deletedAt !== null) continue
+    const patch: Partial<Note> =
+      op.type === 'pin'
+        ? { pinned: op.value }
+        : op.type === 'favorite'
+          ? { favorite: op.value }
+          : op.type === 'color'
+            ? { color: normalizeColor(op.value) }
+            : op.type === 'addTags'
+              ? { tags: addTags(note.tags, op.tags) }
+              : { tags: removeTags(note.tags, op.tags) }
+    const updated = await updateNote(id, patch)
+    if (updated) result.push(updated)
+  }
+  return result
+}
+
+/** Moves several notes to the trash (never a permanent delete). Returns the ids actually moved. */
+export async function bulkSoftDelete(ids: string[]): Promise<string[]> {
+  const moved: string[] = []
+  for (const id of ids) {
+    const note = cache.get(id)
+    if (!note || note.deletedAt !== null) continue
+    await softDeleteNote(id)
+    moved.push(id)
+  }
+  return moved
+}
+
+/**
+ * Full copy of a note with its own id and dates: content, tables, code, OCR blocks and fragment
+ * metadata, tags and colour, and its own copies of the image files. Pinned / favorite start off.
+ */
+export async function duplicateNote(id: string): Promise<Note | null> {
+  const source = cache.get(id)
+  if (!source) return null
+  const newId = randomUUID()
+  const imageIds = new Set(collectImageIds(source.body, source.id))
+  for (const src of Object.values(source.sources ?? {})) if (src.imageId) imageIds.add(src.imageId)
+  const idMap = await copyNoteImages(source.id, newId, [...imageIds])
+  const sources: Record<string, OcrSource> = {}
+  for (const [key, value] of Object.entries(source.sources ?? {})) {
+    sources[key] = { ...value, ...(value.imageId && idMap.has(value.imageId) ? { imageId: idMap.get(value.imageId) } : {}) }
+  }
+  const now = Date.now()
+  const body = rewriteImageRefs(source.body, source.id, newId, idMap)
+  const title = source.title.trim() ? `${source.title.trim()} — копия` : ''
+  const copy: Note = {
+    ...withBlocks({
+      id: newId,
+      title,
+      body,
+      emoji: source.emoji,
+      pinned: false,
+      favorite: false,
+      color: source.color,
+      tags: [...source.tags],
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null
+    }),
+    ...(title ? { titleManual: true } : {}),
+    ...(Object.keys(sources).length ? { sources } : {})
+  }
+  cache.set(copy.id, copy)
+  await persist(copy)
+  return copy
+}
+
+/** Removes an auto-created note that is still empty (nothing typed, no captures, no images). */
+export async function discardIfEmptyAuto(id: string): Promise<boolean> {
+  const note = cache.get(id)
+  if (!note || !isDiscardableAutoNote(note)) return false
+  return permanentlyDeleteNote(id)
+}
+
+/** Stores a picture dropped into a note and returns the snap-media:// address to show it. */
+export async function addNoteImage(noteId: string, png: Buffer): Promise<string | null> {
+  if (!cache.has(noteId)) return null
+  const imageId = await saveDocumentImage(noteId, png)
+  return imageSrc(noteId, imageId)
+}
+
+/**
+ * Inserts recognized blocks right after the image block showing `imageSrcUrl` ("Recognize text"),
+ * or in place of it when `replace` is set. Returns null when the note or the image is not found.
+ */
+export async function insertAfterImage(
+  id: string,
+  imageSrcUrl: string,
+  blocks: Block[],
+  source: OcrSource | undefined,
+  replace: boolean
+): Promise<Note | null> {
+  const existing = cache.get(id)
+  if (!existing) return null
+  const current = existing.blocks ?? htmlToBlocks(existing.body)
+  const index = current.findIndex((b) => b.type === 'image' && b.src === imageSrcUrl)
+  if (index === -1) return null
+  const inserted = normalizeBlocks(blocks)
+  const next = [...current.slice(0, replace ? index : index + 1), ...inserted, ...current.slice(index + 1)]
+  const sources = { ...(existing.sources ?? {}), ...(source ? sanitizeSources({ [source.id]: source }) : {}) }
+  const updated: Note = {
+    ...existing,
+    version: NOTE_FORMAT_VERSION,
+    blocks: next,
+    body: sanitizeNoteHtml(blocksToHtml(next)),
+    ...(Object.keys(sources).length ? { sources } : {}),
+    updatedAt: Date.now()
+  }
+  cache.set(id, updated)
+  await persist(updated)
+  return updated
+}
+
+/** Updates the recorded recognizer of a fragment (after "Retry with another AI"). */
+export async function updateSource(id: string, sourceId: string, patch: Partial<OcrSource>): Promise<Note | null> {
+  const existing = cache.get(id)
+  const current = existing?.sources?.[sourceId]
+  if (!existing || !current) return null
+  const sources = { ...(existing.sources ?? {}), ...sanitizeSources({ [sourceId]: { ...current, ...patch, id: sourceId } }) }
+  const updated: Note = { ...existing, sources, updatedAt: Date.now() }
   cache.set(id, updated)
   await persist(updated)
   return updated

@@ -7,6 +7,9 @@ export interface TrayHandlers {
   onOpen: () => void
   onNewNoteCapture: () => void
   onNewDocumentCapture: () => void
+  onQuickNote: () => void
+  onRepeatCapture: () => void
+  onOcrClipboard: () => void
   onToggleLongScreenshot: () => void
   onQuit: () => void
 }
@@ -26,6 +29,9 @@ export function createTray(handlers: TrayHandlers): Tray {
     { label: 'Открыть Snap Notes', click: () => handlers.onOpen() },
     { label: 'Новая заметка + скриншот', click: () => handlers.onNewNoteCapture() },
     { label: 'Документ из скриншота', click: () => handlers.onNewDocumentCapture() },
+    { label: 'Повторить последний захват', click: () => handlers.onRepeatCapture() },
+    { label: 'Распознать картинку из буфера', click: () => handlers.onOcrClipboard() },
+    { label: 'Быстрая заметка', click: () => handlers.onQuickNote() },
     { label: 'Долгий скриншот (старт/стоп)', click: () => handlers.onToggleLongScreenshot() },
     { type: 'separator' },
     { label: 'Выход', click: () => handlers.onQuit() }

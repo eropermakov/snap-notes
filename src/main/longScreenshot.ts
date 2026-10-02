@@ -1,7 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { IPC } from '../shared/ipc'
 import * as notesStore from './notesStore'
-import * as settingsStore from './settingsStore'
 import { selectRegionRect, captureDisplayRegion, ScreenRegion } from './screenshot'
 import { stitchFrames } from './imageStitch'
 import { saveDocumentImage, imageSrc } from './imageStore'
@@ -9,7 +8,8 @@ import { ToastPayload } from '../shared/types'
 import type { RecognitionService } from './providers/recognition'
 import { noteTitle, recognitionErrorMessage, setActiveNoteId } from './capturePipeline'
 import * as hud from './hud'
-import { generateTitle, recognizeCapture } from './captureContent'
+import { heuristicTitle, recognizeCapture } from './captureContent'
+import { broadcastNoteEvent } from './noteWindows'
 import { readForegroundWindow, type ForegroundWindowInfo } from './windowInfo'
 
 const CAPTURE_INTERVAL_MS = 500
@@ -24,19 +24,14 @@ interface Session {
 
 let session: Session | null = null
 let starting = false
-let getWin: (() => BrowserWindow | null) | null = null
 let recognition: RecognitionService | null = null
 
-export function initLongScreenshot(getMainWindow: () => BrowserWindow | null, service: RecognitionService): void {
-  getWin = getMainWindow
+export function initLongScreenshot(_getMainWindow: () => BrowserWindow | null, service: RecognitionService): void {
   recognition = service
 }
 
 function broadcast(channel: string, payload?: unknown): void {
-  const win = getWin?.() ?? null
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(channel, payload)
-  }
+  broadcastNoteEvent(channel, payload)
 }
 
 /** The user is in another app while scrolling: messages go to the HUD, not the app window. */
@@ -132,7 +127,6 @@ async function finishLongScreenshot(): Promise<void> {
   broadcast(IPC.ON_NOTE_CREATED, note)
   broadcast(IPC.ON_NAVIGATE, { view: 'editor', noteId: note.id })
 
-  const settings = settingsStore.getSettings()
   let recognized = false
 
   if (recognition) {
@@ -153,8 +147,7 @@ async function finishLongScreenshot(): Promise<void> {
       if (result.blocks.length > 0) {
         recognized = true
         await notesStore.appendBlocks(note.id, result.blocks, result.source)
-        const title = await generateTitle(recognition.manager, result.blocks, settings.ai.mode === 'offline')
-        const updated = await notesStore.updateNote(note.id, { title: title || 'Длинный скриншот' })
+        const updated = await notesStore.updateNote(note.id, { title: heuristicTitle(result.blocks) || 'Длинный скриншот' })
         if (updated) broadcast(IPC.ON_NOTE_UPDATED, updated)
       }
     } catch (err) {

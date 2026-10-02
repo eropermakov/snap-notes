@@ -2,8 +2,9 @@ import type { Block } from '../shared/blocks'
 import type { OperationType } from '../shared/providers'
 import type { Note } from '../shared/types'
 import { itemsToBlocks } from '../shared/aiBlocks'
-import { blocksToMarkdown } from '../shared/blockExport'
-import { cleanOcrText } from '../shared/ocrCleanup'
+import { blocksToMarkdown, blocksToPlainText } from '../shared/blockExport'
+import { cleanOcrText, isJunkLine } from '../shared/ocrCleanup'
+import { removeLineBreaks } from '../shared/textTools'
 import { extractBlockItems } from '../shared/structuredJson'
 import { buildAiActionPrompt, buildJsonRepairPromptV2, buildTidyPrompt, type AiAction } from '../shared/ocrPrompts'
 import { htmlToBlocks, sanitizeInline, textToInline, inlineToText } from '../shared/blocks'
@@ -149,5 +150,33 @@ export async function runAiAction(
     return updated ? { ok: true, note: updated, provider: result.provider } : { ok: false }
   } catch {
     return { ok: false, message: 'Не удалось связаться с ИИ — заметка не изменена.' }
+  }
+}
+
+/**
+ * "Привести в порядок" for selected text: OCR junk, line breaks, paragraphs, obvious recognition
+ * errors. The local pass always runs; the AI (current provider router) only refines it and only
+ * when the user's mode allows it. If the AI is unavailable the local result is returned.
+ */
+export async function cleanupSelection(
+  manager: ProviderManager,
+  text: string,
+  offline: boolean
+): Promise<{ ok: boolean; text: string; provider?: string; local: boolean }> {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n').filter((l) => !l.trim() || !isJunkLine(l))
+  const local = removeLineBreaks(lines.join('\n'))
+    .split('\n')
+    .map((l) => cleanOcrText(l))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  if (!local) return { ok: false, text, local: true }
+  if (offline) return { ok: true, text: local, provider: 'локальная очистка', local: true }
+  try {
+    const result = await runStructured(manager, 'OCR_CLEANUP', buildTidyPrompt(local))
+    if (result.blocks.length === 0) return { ok: true, text: local, provider: 'локальная очистка', local: true }
+    return { ok: true, text: blocksToPlainText(result.blocks), provider: result.provider, local: false }
+  } catch {
+    return { ok: true, text: local, provider: 'локальная очистка', local: true }
   }
 }

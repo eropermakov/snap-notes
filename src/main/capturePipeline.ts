@@ -1,4 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron'
+import { broadcastNoteEvent } from './noteWindows'
+import { captureRepeatRegion } from './screenshot'
+import { getLastRegion } from './lastCapture'
 import stringSimilarity from 'string-similarity'
 import { IPC } from '../shared/ipc'
 import * as notesStore from './notesStore'
@@ -13,22 +16,28 @@ import type { Note } from '../shared/types'
 import type { HudSession } from '../shared/hud'
 import type { RecognitionService } from './providers/recognition'
 import { AllProvidersFailedError } from './providers/router'
-import { discardCapture, recognizeCapture, type CaptureResult } from './captureContent'
+import { discardCapture, heuristicTitle, recognizeCapture, type CaptureResult } from './captureContent'
 import { readForegroundWindow } from './windowInfo'
 import * as hud from './hud'
 import { logEvent } from './logger'
 
 let activeNoteId: string | null = null
 let capturing = false
-let getWin: (() => BrowserWindow | null) | null = null
 let recognition: RecognitionService | null = null
+/** Notes a capture is being written into right now: they must not be cleaned up as "empty". */
+const processingNotes = new Set<string>()
+/** The last capture that can still be undone with the "Undo last recognition" command. */
+let lastUndo: { noteId: string; sourceId: string } | null = null
+
+export function isNoteProcessing(id: string): boolean {
+  return processingNotes.has(id)
+}
 let preload = ''
 
 /** Capture Session (§13): several captures appended to one note, in capture order. */
 let session: { noteId: string; count: number } | null = null
 
-export function initCapturePipeline(getMainWindow: () => BrowserWindow | null, service: RecognitionService): void {
-  getWin = getMainWindow
+export function initCapturePipeline(_getMainWindow: () => BrowserWindow | null, service: RecognitionService): void {
   recognition = service
   // Enter / Esc in the selection overlay during a session finish it.
   ipcMain.on(IPC.OVERLAY_FINISH_SESSION, () => finishCaptureSession())
@@ -51,10 +60,7 @@ export function getActiveNoteId(): string | null {
 }
 
 function broadcast(channel: string, payload?: unknown): void {
-  const win = getWin?.() ?? null
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(channel, payload)
-  }
+  broadcastNoteEvent(channel, payload)
 }
 
 export function noteTitle(note: Note | undefined): string {
@@ -111,8 +117,9 @@ export function withCompletenessFlag(result: CaptureResult): { blocks: Block[]; 
   }
 }
 
+/** A note made by a capture (not by the user): removed again if it stays empty. */
 async function createAndOpenNote(): Promise<Note> {
-  const note = await notesStore.createNote()
+  const note = await notesStore.createNote({ autoCreated: true })
   activeNoteId = note.id
   broadcast(IPC.ON_NOTE_CREATED, note)
   broadcast(IPC.ON_NAVIGATE, { view: 'editor', noteId: note.id })
@@ -120,7 +127,11 @@ async function createAndOpenNote(): Promise<Note> {
 }
 
 /** Where a capture goes: the session note, the open note, or (no note open) a new one / the user's pick. */
-async function resolveTarget(): Promise<{ note: Note; isNew: boolean } | null> {
+async function resolveTarget(preferredId?: string | null): Promise<{ note: Note; isNew: boolean } | null> {
+  if (preferredId) {
+    const preferred = notesStore.getNote(preferredId)
+    if (preferred && preferred.deletedAt === null) return { note: preferred, isNew: false }
+  }
   if (session) {
     const sessionNote = notesStore.getNote(session.noteId)
     if (sessionNote && sessionNote.deletedAt === null) return { note: sessionNote, isNew: false }
@@ -151,12 +162,19 @@ async function resolveTarget(): Promise<{ note: Note; isNew: boolean } | null> {
  * note when none is open, or the Capture Session's note). The editor then moves them to the caret.
  * Progress and the result appear in the HUD, with Undo and Open.
  */
-export async function runCapture(kind: 'region' | 'fullscreen', preloadPath: string): Promise<void> {
+export interface CaptureOptions {
+  /** An image that is already in hand (clipboard, file, repeated area): no selection overlay. */
+  buffer?: Buffer
+  /** Put the result into this note instead of the open one. */
+  targetNoteId?: string | null
+}
+
+export async function runCapture(kind: 'region' | 'fullscreen', preloadPath: string, options: CaptureOptions = {}): Promise<void> {
   if (capturing) return
   capturing = true
   preload = preloadPath
   // Before the overlay takes focus: which app/window the user is capturing from.
-  const windowInfo = readForegroundWindow()
+  const windowInfo = options.buffer ? undefined : readForegroundWindow()
 
   try {
     const settings = settingsStore.getSettings()
@@ -165,9 +183,10 @@ export async function runCapture(kind: 'region' | 'fullscreen', preloadPath: str
     let buffer: Buffer | null
     try {
       buffer =
-        kind === 'region'
+        options.buffer ??
+        (kind === 'region'
           ? await captureRegionAtCursor(preloadPath, session ? { session: { count: session.count } } : {})
-          : await captureFullscreenAtCursor()
+          : await captureFullscreenAtCursor())
     } catch (err) {
       hud.show({ kind: 'message', tone: 'error', text: `Не удалось сделать скриншот: ${(err as Error).message}`, session: sessionInfo() })
       return
@@ -181,11 +200,12 @@ export async function runCapture(kind: 'region' | 'fullscreen', preloadPath: str
       saveToCache(buffer).catch(() => {})
     }
 
-    const target = await resolveTarget()
+    const target = await resolveTarget(options.targetNoteId)
     if (!target) return
     const { note, isNew } = target
 
     hud.show({ kind: 'working', text: 'Распознаю…', session: sessionInfo() })
+    processingNotes.add(note.id)
     broadcast(IPC.ON_NOTE_PROCESSING_START, note.id)
     try {
       const result = await recognizeCapture({ png: buffer, noteId: note.id, recognition, withImages: true, windowInfo })
@@ -199,8 +219,11 @@ export async function runCapture(kind: 'region' | 'fullscreen', preloadPath: str
         hud.show({ kind: 'message', tone: 'warning', text: 'Похожий текст уже есть в заметке — пропущено.' })
       } else {
         const { blocks, flagged } = withCompletenessFlag(result)
-        const updated = await notesStore.appendBlocks(note.id, blocks, result.source)
+        let updated = await notesStore.appendBlocks(note.id, blocks, result.source)
+        // A note made by this capture gets a short local title from its first meaningful line.
+        if (updated && isNew) updated = (await notesStore.setAutoTitle(note.id, heuristicTitle(result.blocks))) ?? updated
         if (updated) {
+          lastUndo = { noteId: note.id, sourceId: result.source.id }
           broadcast(IPC.ON_NOTE_UPDATED, updated)
           // The editor moves the new blocks to the caret if the caret was in this note's text.
           broadcast(IPC.ON_CAPTURE_ADDED, { noteId: note.id, sourceId: result.source.id })
@@ -208,26 +231,78 @@ export async function runCapture(kind: 'region' | 'fullscreen', preloadPath: str
             session.count += 1
             hud.setSession(sessionInfo() ?? null)
           }
-          hud.show({
-            kind: 'added',
-            tone: flagged || result.output.offlineFallback ? 'warning' : 'success',
-            noteId: note.id,
-            noteTitle: noteTitle(updated),
-            sourceId: result.source.id,
-            detail: flagged ? 'Похоже, текст поместился не полностью' : detail,
-            session: sessionInfo()
-          })
+          const feedback = settings.ocrFeedback
+          const warn = flagged || result.output.offlineFallback
+          // "None" silences the success notice only; warnings (cut-off text, offline fallback) still show.
+          if (feedback !== 'none' || warn) {
+            hud.show({
+              kind: 'added',
+              tone: warn ? 'warning' : 'success',
+              noteId: note.id,
+              noteTitle: noteTitle(updated),
+              sourceId: result.source.id,
+              detail: flagged ? 'Похоже, текст поместился не полностью' : detail,
+              session: sessionInfo(),
+              ...(feedback === 'sound' ? { sound: true } : {})
+            })
+          }
         }
       }
     } catch (err) {
       logEvent('capture', { kind, error: err instanceof Error ? err.name : 'unknown' })
       hud.show({ kind: 'message', tone: 'error', text: recognitionErrorMessage(err), session: sessionInfo() })
     } finally {
+      processingNotes.delete(note.id)
       broadcast(IPC.ON_NOTE_PROCESSING_END, note.id)
+      // Nothing was recognized into a note this capture created: do not leave an empty one behind.
+      if (isNew) await discardEmptyAutoNote(note.id)
     }
   } finally {
     capturing = false
   }
+}
+
+/** Removes an auto-created note that is still empty and tells every window. */
+export async function discardEmptyAutoNote(id: string): Promise<boolean> {
+  if (processingNotes.has(id) || session?.noteId === id) return false
+  const removed = await notesStore.discardIfEmptyAuto(id)
+  if (removed) {
+    if (activeNoteId === id) activeNoteId = null
+    broadcast(IPC.ON_NOTE_DELETED, id)
+  }
+  return removed
+}
+
+/** "Repeat last capture": the same screen area again; if the layout changed, a normal selection. */
+export async function runRepeatCapture(preloadPath: string): Promise<void> {
+  if (capturing) return
+  const region = getLastRegion()
+  if (!region) {
+    hud.show({ kind: 'message', tone: 'warning', text: 'Ещё не было захвата области — выделите её.' })
+    await runCapture('region', preloadPath)
+    return
+  }
+  const repeat = await captureRepeatRegion(region)
+  if (!repeat.ok) {
+    const why = repeat.reason === 'display_missing' ? 'Монитор с прошлой областью недоступен' : 'Разрешение или расположение экранов изменилось'
+    hud.show({ kind: 'message', tone: 'warning', text: `${why} — выделите область заново.` })
+    await runCapture('region', preloadPath)
+    return
+  }
+  await runCapture('region', preloadPath, { buffer: repeat.buffer })
+}
+
+/** Recognizes an image that is not on screen (clipboard, file) into the open note or a new one. */
+export async function runImageOcr(png: Buffer, preloadPath: string, targetNoteId?: string | null): Promise<void> {
+  await runCapture('region', preloadPath, { buffer: png, targetNoteId })
+}
+
+/** "Undo last recognition" without a notice at hand (command palette / menu). */
+export async function undoLastCapture(): Promise<boolean> {
+  if (!lastUndo) return false
+  const { noteId, sourceId } = lastUndo
+  await undoCapture(noteId, sourceId)
+  return true
 }
 
 export function isCaptureSessionActive(): boolean {
@@ -273,7 +348,13 @@ export function finishCaptureSession(): void {
 export async function undoCapture(noteId: string, sourceId: string): Promise<void> {
   const updated = await notesStore.removeSource(noteId, sourceId)
   if (!updated) return
+  if (lastUndo?.sourceId === sourceId) lastUndo = null
   broadcast(IPC.ON_NOTE_UPDATED, updated)
+  // The capture made this note and nothing else was added: the empty note goes away with it.
+  if (await discardEmptyAutoNote(noteId)) {
+    hud.show({ kind: 'message', tone: 'warning', text: 'Добавление отменено', session: sessionInfo() })
+    return
+  }
   if (session && session.noteId === noteId && session.count > 0) {
     session.count -= 1
     hud.setSession(sessionInfo() ?? null)

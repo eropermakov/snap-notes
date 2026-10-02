@@ -54,6 +54,8 @@ export interface OcrSource {
   method?: string
   model?: string
   mode?: string
+  /** Normalized recognition quality, present only when the recognizer reported real confidences. */
+  quality?: 'HIGH' | 'MEDIUM' | 'LOW'
 }
 
 // ---------------------------------------------------------------------------------------------

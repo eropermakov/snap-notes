@@ -9,6 +9,8 @@ import type { RecognitionOutput, RecognitionService } from './providers/recognit
 import type { ProviderManager } from './providers/manager'
 import { cropToPng, deleteNoteImage, imageSrc, saveDocumentImage } from './imageStore'
 import { splitAtQuietRows } from './imageStitch'
+import { meaningfulTitle } from '../shared/textTools'
+import { qualityFromLines, storedQuality } from '../shared/ocrQuality'
 import type { ForegroundWindowInfo } from './windowInfo'
 
 export interface CaptureResult {
@@ -110,7 +112,9 @@ export async function recognizeCapture(options: CaptureOptions): Promise<Capture
     ...window,
     method: output.providerName,
     model: output.model,
-    mode: output.mode
+    mode: output.mode,
+    // Only the local engine reports confidences; for cloud AI the quality stays unknown (not shown).
+    ...(storedQuality(qualityFromLines(output.localLines)) ? { quality: storedQuality(qualityFromLines(output.localLines)) } : {})
   }
   if (blocks.length > 0) {
     // Original screenshot, kept for "Показать оригинал" / "Проверить распознавание".
@@ -128,13 +132,10 @@ export async function discardCapture(noteId: string, result: CaptureResult): Pro
   }
 }
 
-/** First heading or first line, trimmed to a readable title. */
+/** First heading or first meaningful line, trimmed to a readable title (no AI involved). */
 export function heuristicTitle(blocks: Block[]): string {
   const heading = blocks.find((b) => b.type === 'heading')
-  const text = (heading ? blocksToText([heading]) : blocksToText(blocks)).split('\n').map((l) => l.trim()).find(Boolean) ?? ''
-  if (text.length <= 60) return text
-  const cut = text.slice(0, 60)
-  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 40))}…`
+  return meaningfulTitle(heading ? blocksToText([heading]) : blocksToText(blocks))
 }
 
 /**

@@ -41,6 +41,8 @@ export interface ExecuteOptions {
   run: (provider: AIProvider) => Promise<ProviderResult>
   /** Run on exactly this provider (still subject to privacy/offline rules), e.g. a JSON repair retry. */
   onlyProvider?: ProviderId
+  /** Providers to skip ("Retry with another AI": everything except the one behind the current text). */
+  excludeProviders?: ProviderId[]
   signal?: AbortSignal
 }
 
@@ -254,6 +256,9 @@ export class ProviderManager {
       const settings = this.deps.getSettings()
       const blockedByPrivacy = provider && !provider.local && (settings.mode === 'offline' || !this.deps.usage.isOnline())
       plan.order = provider && !blockedByPrivacy ? [options.onlyProvider] : []
+    }
+    if (options.excludeProviders?.length) {
+      plan.order = plan.order.filter((id) => !options.excludeProviders?.includes(id))
     }
     if (plan.order.length === 0) {
       throw new AllProvidersFailedError([])

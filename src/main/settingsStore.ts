@@ -4,6 +4,7 @@ import { AiKeyEntry, AppSettings, DEFAULT_SETTINGS } from '../shared/types'
 import type { AiSettings } from '../shared/providers'
 import { migrateAiSettings, normalizeAiSettings, type AiMigrationResult } from './providers/settingsMigration'
 import type { SecretStore } from './providers/secretStore'
+import { sanitizeUiSettings } from '../shared/settingsSanitize'
 
 type StoredSettings = Partial<AppSettings> & { geminiApiKey?: string }
 
@@ -60,7 +61,7 @@ export function updateSettings(patch: SettingsPatch): AppSettings {
 /** Patch coming from the renderer: key material and key references can only change via provider IPC. */
 export function sanitizeRendererPatch(patch: SettingsPatch): SettingsPatch {
   const { aiKeys: _aiKeys, providerKeys: _providerKeys, ...rest } = patch
-  return rest
+  return sanitizeUiSettings(rest as Partial<AppSettings>) as unknown as SettingsPatch
 }
 
 /**

@@ -1,7 +1,30 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 import type { HudState } from '@shared/hud'
 import { Button, Spinner, cn } from '../../ui'
-import { CheckIcon, AlertTriangleIcon, XCircleIcon, CloseIcon } from '../icons'
+import { CheckIcon, AlertTriangleIcon, XCircleIcon, CloseIcon, ClipboardIcon } from '../icons'
+
+/** A short, soft two-note chime (low volume) — the optional "sound" part of OCR completion feedback. */
+function playSoftChime(): void {
+  try {
+    const ctx = new AudioContext()
+    const now = ctx.currentTime
+    for (const [i, freq] of [660, 880].entries()) {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.0001, now + i * 0.09)
+      gain.gain.exponentialRampToValueAtTime(0.05, now + i * 0.09 + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.09 + 0.16)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(now + i * 0.09)
+      osc.stop(now + i * 0.09 + 0.18)
+    }
+    setTimeout(() => void ctx.close(), 600)
+  } catch {
+    // No audio device: the visual notice is enough.
+  }
+}
 
 function fragments(count: number): string {
   const mod10 = count % 10
@@ -27,6 +50,7 @@ export default function CaptureHud(): ReactElement {
     void window.api.settings.get().then((s) => document.documentElement.setAttribute('data-theme', s.theme))
     const off = window.api.hud.onState((next) => {
       setState(next)
+      if (next.kind === 'added' && next.sound) playSoftChime()
       // Theme may have changed since the HUD window was created.
       void window.api.settings.get().then((s) => document.documentElement.setAttribute('data-theme', s.theme))
     })
@@ -92,6 +116,19 @@ export default function CaptureHud(): ReactElement {
                 Открыть заметку
               </Button>
             </div>
+          </div>
+        )}
+
+        {state.kind === 'suggest' && (
+          <div className="flex items-center gap-2.5">
+            <span className="shrink-0 text-fg-secondary">
+              <ClipboardIcon className="h-4 w-4" />
+            </span>
+            <p className="min-w-0 flex-1 text-base">{state.text}</p>
+            <Button size="sm" variant="secondary" onClick={() => window.api.hud.action({ type: 'ocrClipboard' })}>
+              Распознать
+            </Button>
+            <DismissButton />
           </div>
         )}
 

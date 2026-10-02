@@ -23,7 +23,10 @@ export type HudState =
       /** Extra line, e.g. a fallback notice ("Распознано: Gemini · ChatGPT: лимит исчерпан"). */
       detail?: string
       session?: HudSession
+      /** Play a short soft sound (OCR completion feedback: sound + visual). */
+      sound?: boolean
     }
+  | { kind: 'suggest'; text: string }
   | { kind: 'message'; tone: 'warning' | 'error'; text: string; session?: HudSession }
   | { kind: 'session'; session: HudSession }
   | { kind: 'pick'; requestId: string; notes: HudPickNote[] }
@@ -31,6 +34,7 @@ export type HudState =
 export type HudAction =
   | { type: 'undo'; noteId: string; sourceId: string }
   | { type: 'open'; noteId: string }
+  | { type: 'ocrClipboard' }
   | { type: 'sessionNext' }
   | { type: 'sessionFinish' }
   | { type: 'pick'; requestId: string; choice: string | null }

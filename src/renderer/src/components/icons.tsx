@@ -640,3 +640,203 @@ export function ScanTextIcon({ className }: IconProps): ReactElement {
     </Svg>
   )
 }
+
+export function StarIcon({ className, filled }: IconProps): ReactElement {
+  return (
+    <Svg className={className} fill={filled ? 'currentColor' : 'none'}>
+      <path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5L2.6 9.3l6.5-.9z" />
+    </Svg>
+  )
+}
+
+export function PaletteIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4C21 6.4 17 3 12 3z" />
+      <circle cx="7.5" cy="11" r="1" />
+      <circle cx="10" cy="7" r="1" />
+      <circle cx="15" cy="7" r="1" />
+    </Svg>
+  )
+}
+
+export function TagIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z" />
+      <circle cx="7.5" cy="7.5" r="1.2" />
+    </Svg>
+  )
+}
+
+export function DuplicateIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+      <path d="M15 13v4" />
+      <path d="M13 15h4" />
+    </Svg>
+  )
+}
+
+export function WindowIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18" />
+      <path d="M13 14h4v3h-4z" />
+    </Svg>
+  )
+}
+
+export function EraserIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l9.6-9.6a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 21" />
+      <path d="M22 21H7" />
+      <path d="m5 11 9 9" />
+    </Svg>
+  )
+}
+
+export function UndoIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+    </Svg>
+  )
+}
+
+export function RepeatIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </Svg>
+  )
+}
+
+export function ClipboardIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <rect x="8" y="2" width="8" height="4" rx="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    </Svg>
+  )
+}
+
+export function SortIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="m3 16 4 4 4-4" />
+      <path d="M7 20V4" />
+      <path d="M13 6h8" />
+      <path d="M13 12h6" />
+      <path d="M13 18h4" />
+    </Svg>
+  )
+}
+
+export function ClockIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </Svg>
+  )
+}
+
+export function ZapIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="M13 2 4 14h7l-1 8 9-12h-7z" />
+    </Svg>
+  )
+}
+
+export function ChevronUpIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="m18 15-6-6-6 6" />
+    </Svg>
+  )
+}
+
+export function LinkIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="M10 13a5 5 0 0 0 7.1 0l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7" />
+      <path d="M14 11a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7" />
+    </Svg>
+  )
+}
+
+export function MailIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
+    </Svg>
+  )
+}
+
+export function PhoneIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z" />
+    </Svg>
+  )
+}
+
+export function WrapTextIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="M3 6h18" />
+      <path d="M3 12h15a3 3 0 1 1 0 6h-4" />
+      <path d="m16 16-2 2 2 2" />
+      <path d="M3 18h7" />
+    </Svg>
+  )
+}
+
+export function CollapseIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="m7 20 5-5 5 5" />
+      <path d="m7 4 5 5 5-5" />
+    </Svg>
+  )
+}
+
+export function PasteTextIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <rect x="8" y="2" width="8" height="4" rx="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <path d="M9 12h6" />
+      <path d="M9 16h4" />
+    </Svg>
+  )
+}
+
+export function AlwaysOnTopIcon({ className, filled }: IconProps): ReactElement {
+  return (
+    <Svg className={className} fill={filled ? 'currentColor' : 'none'}>
+      <path d="M5 3h14" />
+      <path d="m12 8-4 4h3v7h2v-7h3z" />
+    </Svg>
+  )
+}
+
+export function EditIcon({ className }: IconProps): ReactElement {
+  return (
+    <Svg className={className}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+    </Svg>
+  )
+}

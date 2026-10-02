@@ -1,13 +1,18 @@
 import { create } from 'zustand'
-import type { AppSettings, HotkeyRegistrationResult, Note, ToastPayload } from '@shared/types'
+import type { AppSettings, CardSize, HotkeyRegistrationResult, Note, OcrFeedback, ToastPayload } from '@shared/types'
 import type { AiSettings, ProviderPublicState } from '@shared/providers'
+import type { NoteColor } from '@shared/noteMeta'
+import { addTags as mergeTags, isContentPatch, normalizeTags } from '@shared/noteMeta'
+import { normalizeSortOrder, type SortOrder } from '@shared/noteList'
+import { applySelection, EMPTY_SELECTION, pruneSelection, type SelectionState } from '@shared/selection'
+import { resolveStartupNote } from '@shared/noteLifecycle'
 
 export type ViewMode = 'grid' | 'list'
 /** Global modes shown in the navigation rail. */
 export type AppSection = 'notes' | 'settings' | 'help'
 /** Collections inside the notes section (context sidebar). */
-export type NotesFilter = 'all' | 'pinned' | 'trash'
-export type SettingsCategory = 'general' | 'recognition' | 'providers' | 'usage' | 'hotkeys' | 'storage' | 'data' | 'about'
+export type NotesFilter = 'all' | 'recent' | 'favorites' | 'pinned' | 'trash'
+export type SettingsCategory = 'general' | 'editor' | 'recognition' | 'providers' | 'usage' | 'hotkeys' | 'storage' | 'data' | 'about'
 
 export interface ToastAction {
   label: string
@@ -52,6 +57,8 @@ interface AppState {
   viewMode: ViewMode
   section: AppSection
   notesFilter: NotesFilter
+  /** Only notes with this tag (combined with the collection above). */
+  tagFilter: string | null
   settingsCategory: SettingsCategory
   /** Docked sidebar preference (normal/wide windows), persisted. */
   sidebarOpen: boolean
@@ -62,6 +69,11 @@ interface AppState {
   /** Bumped to ask the notes sidebar to focus its search field. */
   searchFocusTick: number
   editorNoteId: string | null
+  /** Search words to highlight inside the note that was opened from a search result. */
+  highlightQuery: string
+  selection: SelectionState
+  /** Notes whose tags the tag dialog is editing (one or a whole selection). */
+  tagEditorIds: string[] | null
   processingIds: string[]
   toasts: AppToast[]
   showOnboarding: boolean
@@ -71,7 +83,7 @@ interface AppState {
   /** Credential-free provider states pushed by the main process. */
   providers: ProviderPublicState[]
 
-  init: () => Promise<void>
+  init: (options?: { restore?: boolean }) => Promise<void>
   refreshProviders: () => Promise<void>
   openUsageCenter: () => void
   dismissWhatsNew: () => Promise<void>
@@ -81,12 +93,13 @@ interface AppState {
   setSearchQuery: (q: string) => void
   setViewMode: (m: ViewMode) => void
   setNotesFilter: (f: NotesFilter) => void
+  setTagFilter: (tag: string | null) => void
   setSidebarOpen: (open: boolean) => void
   toggleSidebar: () => void
   setLayoutNarrow: (narrow: boolean) => void
   setCommandOpen: (open: boolean) => void
   focusSearch: () => void
-  openNote: (id: string) => void
+  openNote: (id: string, highlight?: string) => void
   closeEditor: () => void
   openSettings: (category?: SettingsCategory) => void
   openInstructions: () => void
@@ -103,9 +116,34 @@ interface AppState {
   noteRevisions: Record<string, number>
   deleteNote: (id: string) => Promise<void>
   togglePin: (id: string) => Promise<void>
+  toggleFavorite: (id: string) => Promise<void>
+  setColor: (id: string, color: NoteColor) => Promise<void>
+  setTags: (id: string, tags: string[]) => Promise<void>
+  duplicateNote: (id: string) => Promise<void>
+  openFloating: (id: string) => Promise<void>
   restoreNote: (id: string) => Promise<void>
   permanentDelete: (id: string) => Promise<void>
   emptyTrash: () => Promise<void>
+
+  // multi-selection and bulk actions
+  clickCard: (id: string, mods: { ctrl: boolean; shift: boolean }, order: string[]) => void
+  clearSelection: () => void
+  selectAll: (ids: string[]) => void
+  openTagEditor: (ids: string[]) => void
+  closeTagEditor: () => void
+  bulkPin: (ids: string[], value: boolean) => Promise<void>
+  bulkFavorite: (ids: string[], value: boolean) => Promise<void>
+  bulkColor: (ids: string[], color: NoteColor) => Promise<void>
+  bulkAddTags: (ids: string[], tags: string[]) => Promise<void>
+  bulkDelete: (ids: string[]) => Promise<void>
+  bulkExport: (ids: string[]) => Promise<void>
+
+  // view / behaviour settings
+  setSortOrder: (sort: SortOrder) => void
+  setCardSize: (size: CardSize) => void
+  setCompactGrid: (compact: boolean) => void
+  setOcrFeedback: (feedback: OcrFeedback) => void
+
   pushToast: (type: ToastPayload['type'], message: string, action?: ToastAction) => void
   dismissToast: (id: string) => void
   updateSettings: (patch: SettingsPatch) => Promise<HotkeyRegistrationResult | null>
@@ -121,6 +159,10 @@ function upsert(notes: Note[], note: Note): Note[] {
   return next
 }
 
+function patchNotes(notes: Note[], ids: Set<string>, patch: (n: Note) => Partial<Note>): Note[] {
+  return notes.map((n) => (ids.has(n.id) ? { ...n, ...patch(n) } : n))
+}
+
 let initStarted = false
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -132,6 +174,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   viewMode: initialPrefs.viewMode,
   section: 'notes',
   notesFilter: 'all',
+  tagFilter: null,
   settingsCategory: 'general',
   sidebarOpen: initialPrefs.sidebarOpen,
   layoutNarrow: false,
@@ -139,6 +182,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   commandOpen: false,
   searchFocusTick: 0,
   editorNoteId: null,
+  highlightQuery: '',
+  selection: EMPTY_SELECTION,
+  tagEditorIds: null,
   processingIds: [],
   toasts: [],
   showOnboarding: false,
@@ -148,7 +194,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   providers: [],
   noteRevisions: {},
 
-  init: async () => {
+  init: async (options = {}) => {
     if (initStarted) return
     initStarted = true
 
@@ -160,7 +206,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       window.api.providers.list().catch(() => [] as ProviderPublicState[])
     ])
     const showWhatsNew = settings.onboardingComplete && settings.lastSeenVersion !== version
-    set({ notes, trashNotes, settings, providers, showOnboarding: !settings.onboardingComplete, showWhatsNew, ready: true })
+    // Restore the note that was open when the app was closed — if it still exists.
+    const restoreId = options.restore === false ? null : resolveStartupNote(settings.restoreLastNote, settings.lastNoteId, notes)
+    set({
+      notes,
+      trashNotes,
+      settings,
+      providers,
+      showOnboarding: !settings.onboardingComplete,
+      showWhatsNew,
+      ready: true,
+      ...(restoreId ? { editorNoteId: restoreId } : {})
+    })
+    if (restoreId) window.api.notes.setActive(restoreId)
 
     window.api.providers.onChanged((states) => set({ providers: states }))
 
@@ -169,12 +227,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     })
     window.api.notes.onUpdated((note) => {
       set((state) => ({
-        notes: upsert(state.notes, note),
+        // A note restored from the trash in another window appears again; a trashed one never shows.
+        notes: note.deletedAt === null ? upsert(state.notes, note) : state.notes.filter((n) => n.id !== note.id),
         noteRevisions: { ...state.noteRevisions, [note.id]: (state.noteRevisions[note.id] ?? 0) + 1 }
       }))
     })
     window.api.notes.onDeleted((id) => {
-      set((state) => ({ notes: state.notes.filter((n) => n.id !== id) }))
+      set((state) => {
+        const closing = state.editorNoteId === id
+        return {
+          notes: state.notes.filter((n) => n.id !== id),
+          editorNoteId: closing ? null : state.editorNoteId,
+          selection: pruneSelection(state.selection, new Set(state.notes.filter((n) => n.id !== id).map((n) => n.id)))
+        }
+      })
+      void get().refreshTrash()
     })
     window.api.notes.onProcessingStart((id) => {
       set((state) => ({
@@ -194,7 +261,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           notesFilter: state.notesFilter === 'trash' ? 'all' : state.notesFilter,
           editorNoteId: payload.noteId
         }))
-        window.api.notes.setActive(payload.noteId)
+        window.api.notes.setActive(payload.noteId ?? null)
+      } else if (payload.view === 'search') {
+        set({ commandOpen: true })
       }
     })
     window.api.app.onUpdateAvailable((version) => {
@@ -221,8 +290,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       void get().openTrash()
       return
     }
-    set({ section: 'notes', notesFilter: f })
+    set({ section: 'notes', notesFilter: f, selection: EMPTY_SELECTION })
   },
+  setTagFilter: (tag) => set({ section: 'notes', tagFilter: tag, selection: EMPTY_SELECTION, notesFilter: get().notesFilter === 'trash' ? 'all' : get().notesFilter }),
   setSidebarOpen: (open) => {
     if (get().layoutNarrow) {
       set({ drawerOpen: open })
@@ -244,24 +314,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       searchFocusTick: state.searchFocusTick + 1
     })),
 
-  openNote: (id) => {
+  openNote: (id, highlight) => {
     set((state) => ({
       editorNoteId: id,
+      highlightQuery: highlight ?? '',
       section: 'notes',
       notesFilter: state.notesFilter === 'trash' ? 'all' : state.notesFilter
     }))
     window.api.notes.setActive(id)
+    rememberLastNote(id)
   },
   closeEditor: () => {
-    set({ editorNoteId: null })
+    set({ editorNoteId: null, highlightQuery: '' })
     window.api.notes.setActive(null)
+    rememberLastNote(null)
   },
   openSettings: (category) =>
     set((state) => ({ section: 'settings', settingsCategory: category ?? state.settingsCategory })),
   openInstructions: () => set({ section: 'help' }),
   openTrash: async () => {
     if (get().editorNoteId) get().closeEditor()
-    set({ section: 'notes', notesFilter: 'trash' })
+    set({ section: 'notes', notesFilter: 'trash', selection: EMPTY_SELECTION })
     await get().refreshTrash()
   },
   refreshTrash: async () => {
@@ -272,13 +345,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   createNote: async () => {
     const note = await window.api.notes.create()
-    set((state) => ({ notes: upsert(state.notes, note), notesFilter: state.notesFilter === 'pinned' ? 'all' : state.notesFilter }))
+    set((state) => ({
+      notes: upsert(state.notes, note),
+      notesFilter: state.notesFilter === 'trash' ? 'all' : state.notesFilter,
+      selection: EMPTY_SELECTION
+    }))
     get().openNote(note.id)
+    // A new note made while a tag is filtered starts with that tag, so it does not "vanish" from the list.
+    const tag = get().tagFilter
+    if (tag) void get().setTags(note.id, [tag])
   },
 
   updateNote: async (id, patch) => {
     set((state) => ({
-      notes: state.notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: Date.now() } : n))
+      notes: state.notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: isContentPatch(patch) ? Date.now() : n.updatedAt } : n))
     }))
     const updated = await window.api.notes.update(id, patch)
     if (updated) {
@@ -290,7 +370,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteNote: async (id) => {
     set((state) => ({
       notes: state.notes.filter((n) => n.id !== id),
-      editorNoteId: state.editorNoteId === id ? null : state.editorNoteId
+      editorNoteId: state.editorNoteId === id ? null : state.editorNoteId,
+      selection: pruneSelection(state.selection, new Set(state.notes.filter((n) => n.id !== id).map((n) => n.id)))
     }))
     if (get().editorNoteId === null) {
       window.api.notes.setActive(null)
@@ -307,6 +388,36 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (updated) {
       set((state) => ({ notes: upsert(state.notes, updated) }))
     }
+  },
+
+  toggleFavorite: async (id) => {
+    const note = get().notes.find((n) => n.id === id)
+    if (!note) return
+    await get().updateNote(id, { favorite: !note.favorite })
+  },
+
+  setColor: async (id, color) => {
+    await get().updateNote(id, { color })
+  },
+
+  setTags: async (id, tags) => {
+    await get().updateNote(id, { tags: normalizeTags(tags) })
+  },
+
+  duplicateNote: async (id) => {
+    const copy = await window.api.notes.duplicate(id)
+    if (!copy) {
+      get().pushToast('error', 'Не удалось создать копию')
+      return
+    }
+    set((state) => ({ notes: upsert(state.notes, copy) }))
+    get().pushToast('success', 'Копия заметки создана', { label: 'Открыть', run: () => get().openNote(copy.id) })
+  },
+
+  openFloating: async (id) => {
+    // Pending edits are saved by the editor before the other window loads the note.
+    const result = await window.api.notes.openFloating(id)
+    if (!result.ok) get().pushToast('error', 'Не удалось открыть заметку в отдельном окне')
   },
 
   restoreNote: async (id) => {
@@ -327,6 +438,70 @@ export const useAppStore = create<AppState>((set, get) => ({
     await window.api.notes.emptyTrash()
   },
 
+  clickCard: (id, mods, order) => {
+    set((state) => ({ selection: applySelection(state.selection, { order, id, ctrl: mods.ctrl, shift: mods.shift }) }))
+  },
+  clearSelection: () => set({ selection: EMPTY_SELECTION }),
+  selectAll: (ids) => set({ selection: { selected: ids, anchor: ids[0] ?? null } }),
+  openTagEditor: (ids) => set({ tagEditorIds: ids }),
+  closeTagEditor: () => set({ tagEditorIds: null }),
+
+  bulkPin: async (ids, value) => {
+    const set_ = new Set(ids)
+    set((state) => ({ notes: patchNotes(state.notes, set_, () => ({ pinned: value })) }))
+    await window.api.notes.bulkUpdate(ids, { type: 'pin', value })
+  },
+  bulkFavorite: async (ids, value) => {
+    const set_ = new Set(ids)
+    set((state) => ({ notes: patchNotes(state.notes, set_, () => ({ favorite: value })) }))
+    await window.api.notes.bulkUpdate(ids, { type: 'favorite', value })
+  },
+  bulkColor: async (ids, color) => {
+    const set_ = new Set(ids)
+    set((state) => ({ notes: patchNotes(state.notes, set_, () => ({ color })) }))
+    await window.api.notes.bulkUpdate(ids, { type: 'color', value: color })
+  },
+  bulkAddTags: async (ids, tags) => {
+    const clean = normalizeTags(tags)
+    if (clean.length === 0) return
+    const set_ = new Set(ids)
+    set((state) => ({ notes: patchNotes(state.notes, set_, (n) => ({ tags: mergeTags(n.tags, clean) })) }))
+    await window.api.notes.bulkUpdate(ids, { type: 'addTags', tags: clean })
+  },
+  bulkDelete: async (ids) => {
+    const moved = await window.api.notes.bulkDelete(ids)
+    if (moved.length === 0) return
+    const gone = new Set(moved)
+    set((state) => ({
+      notes: state.notes.filter((n) => !gone.has(n.id)),
+      editorNoteId: state.editorNoteId && gone.has(state.editorNoteId) ? null : state.editorNoteId,
+      selection: EMPTY_SELECTION
+    }))
+    if (get().editorNoteId === null) window.api.notes.setActive(null)
+    void get().refreshTrash()
+    // Everything goes to the trash, never straight to "deleted": one click brings all of it back.
+    get().pushToast('success', `В корзину: ${moved.length}`, {
+      label: 'Отменить',
+      run: () =>
+        void window.api.notes.bulkRestore(moved).then((restored) => {
+          set((state) => ({
+            notes: restored.reduce((acc, n) => upsert(acc, n), state.notes),
+            trashNotes: state.trashNotes.filter((n) => !gone.has(n.id))
+          }))
+        })
+    })
+  },
+  bulkExport: async (ids) => {
+    const result = await window.api.notes.exportMany(ids)
+    if (result.ok) get().pushToast('success', `Сохранено: ${result.path}`)
+    else if (!result.canceled) get().pushToast('error', result.message ?? 'Не удалось экспортировать заметки')
+  },
+
+  setSortOrder: (sort) => void get().updateSettings({ sortOrder: normalizeSortOrder(sort) }),
+  setCardSize: (size) => void get().updateSettings({ cardSize: size }),
+  setCompactGrid: (compact) => void get().updateSettings({ compactGrid: compact }),
+  setOcrFeedback: (feedback) => void get().updateSettings({ ocrFeedback: feedback }),
+
   pushToast: (type, message, action) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
     set((state) => ({ toasts: [...state.toasts.slice(-3), { id, type, message, action }] }))
@@ -336,6 +511,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateSettings: async (patch) => {
+    // Apply right away so sort / card size / font changes feel instant; the main process then confirms.
+    const current = get().settings
+    if (current) set({ settings: { ...current, ...(patch as Partial<AppSettings>), ai: current.ai } })
     const res = await window.api.settings.update(patch)
     set({ settings: res.settings })
     return res.hotkeyResult
@@ -367,3 +545,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   dismissUpdateBanner: () => set({ updateReadyVersion: null, updateAvailableVersion: null })
 }))
+
+/** Remembers which note is open so the next start can come back to it. Fire-and-forget. */
+function rememberLastNote(id: string | null): void {
+  void window.api.settings.update({ lastNoteId: id }).catch(() => undefined)
+}

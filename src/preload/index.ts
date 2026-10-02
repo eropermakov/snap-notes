@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IPC } from '../shared/ipc'
 import type { ActivitySummary, AiSettings, ApiKeyProviderId, ProviderId, ProviderPublicState } from '../shared/providers'
+import type { NoteColor } from '../shared/noteMeta'
+import type { PickedImage, RetryProvider, RetryResult } from '../shared/retry'
 import type { HudAction, HudState } from '../shared/hud'
 import type {
   ApiKeyTestResult,
@@ -43,6 +45,15 @@ interface NavigatePayload {
   noteId?: string
 }
 
+export type BulkNoteOp =
+  | { type: 'pin'; value: boolean }
+  | { type: 'favorite'; value: boolean }
+  | { type: 'color'; value: NoteColor }
+  | { type: 'addTags'; tags: string[] }
+  | { type: 'removeTags'; tags: string[] }
+
+
+
 interface OverlayRect {
   x: number
   y: number
@@ -56,6 +67,30 @@ const api = {
     create: (): Promise<Note> => ipcRenderer.invoke(IPC.NOTES_CREATE),
     update: (id: string, patch: Partial<Note>): Promise<Note | null> =>
       ipcRenderer.invoke(IPC.NOTES_UPDATE, id, patch),
+    bulkUpdate: (ids: string[], op: BulkNoteOp): Promise<Note[]> => ipcRenderer.invoke(IPC.NOTES_BULK_UPDATE, ids, op),
+    /** Moves notes to the trash (never a permanent delete). Resolves with the ids that were moved. */
+    bulkDelete: (ids: string[]): Promise<string[]> => ipcRenderer.invoke(IPC.NOTES_BULK_DELETE, ids),
+    bulkRestore: (ids: string[]): Promise<Note[]> => ipcRenderer.invoke(IPC.NOTES_BULK_RESTORE, ids),
+    duplicate: (id: string): Promise<Note | null> => ipcRenderer.invoke(IPC.NOTES_DUPLICATE, id),
+    exportMany: (ids: string[]): Promise<ExportResult> => ipcRenderer.invoke(IPC.NOTES_EXPORT_MANY, ids),
+    openFloating: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(IPC.NOTES_OPEN_FLOATING, id),
+    /** Stores a dropped picture (PNG bytes) in the note; resolves with its snap-media:// address. */
+    addImage: (noteId: string, bytes: Uint8Array): Promise<string | null> => ipcRenderer.invoke(IPC.NOTES_ADD_IMAGE, noteId, bytes),
+    /** "Recognize text" for a picture of the note: text goes under it, or replaces it. */
+    recognizeImage: (noteId: string, src: string, mode: 'below' | 'replace'): Promise<{ ok: boolean; message?: string }> =>
+      ipcRenderer.invoke(IPC.NOTES_RECOGNIZE_IMAGE, noteId, src, mode),
+    /** OCR of a picture that is not on screen (PNG bytes) into the note, or a new one when noteId is null. */
+    ocrImageData: (noteId: string | null, bytes: Uint8Array): Promise<{ ok: boolean; message?: string }> =>
+      ipcRenderer.invoke(IPC.NOTES_OCR_IMAGE_DATA, noteId, bytes),
+    pickImage: (): Promise<PickedImage | null> => ipcRenderer.invoke(IPC.NOTES_PICK_IMAGE),
+    /** "Привести в порядок" for selected text. */
+    cleanupText: (text: string): Promise<{ ok: boolean; text: string; provider?: string; local: boolean }> =>
+      ipcRenderer.invoke(IPC.NOTES_CLEANUP_TEXT, text),
+    retryProviders: (noteId: string, sourceId: string): Promise<RetryProvider[]> =>
+      ipcRenderer.invoke(IPC.NOTES_RETRY_PROVIDERS, noteId, sourceId),
+    retrySource: (noteId: string, sourceId: string, target: 'next' | ProviderId): Promise<RetryResult> =>
+      ipcRenderer.invoke(IPC.NOTES_RETRY_SOURCE, noteId, sourceId, target),
+    applyRetry: (token: string, apply: boolean): Promise<Note | null> => ipcRenderer.invoke(IPC.NOTES_APPLY_RETRY, token, apply),
     remove: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC.NOTES_DELETE, id),
     togglePin: (id: string): Promise<Note | null> => ipcRenderer.invoke(IPC.NOTES_TOGGLE_PIN, id),
     setActive: (id: string | null): void => ipcRenderer.send(IPC.NOTES_SET_ACTIVE, id),
@@ -166,9 +201,40 @@ const api = {
       return () => ipcRenderer.removeListener(IPC.ON_PROVIDERS_CHANGED, listener)
     }
   },
+  capture: {
+    repeat: (): Promise<void> => ipcRenderer.invoke(IPC.CAPTURE_REPEAT),
+    ocrClipboard: (): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke(IPC.CAPTURE_CLIPBOARD),
+    undoLast: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(IPC.CAPTURE_UNDO_LAST)
+  },
+  clipboard: {
+    readText: (): Promise<string> => ipcRenderer.invoke(IPC.CLIPBOARD_READ_TEXT)
+  },
+  window: {
+    setAlwaysOnTop: (on: boolean): Promise<boolean> => ipcRenderer.invoke(IPC.WINDOW_SET_ALWAYS_ON_TOP, on),
+    getState: (): Promise<{ alwaysOnTop: boolean }> => ipcRenderer.invoke(IPC.WINDOW_GET_STATE),
+    close: (): void => ipcRenderer.send(IPC.WINDOW_CLOSE_SELF)
+  },
+  quick: {
+    save: (title: string, text: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(IPC.QUICK_SAVE, title, text),
+    close: (): void => ipcRenderer.send(IPC.QUICK_CLOSE),
+    onReset: (cb: () => void): Unsubscribe => {
+      const listener = (): void => cb()
+      ipcRenderer.on(IPC.ON_QUICK_RESET, listener)
+      return () => ipcRenderer.removeListener(IPC.ON_QUICK_RESET, listener)
+    }
+  },
   app: {
     getVersion: (): Promise<string> => ipcRenderer.invoke(IPC.APP_GET_VERSION),
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke(IPC.APP_OPEN_EXTERNAL, url),
+    /** Opens http(s) / mailto / tel links in the system's default app. */
+    openLink: (url: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(IPC.APP_OPEN_LINK, url),
+    /** The app is quitting: save pending edits, then call `flushed`. */
+    onFlush: (cb: () => void): Unsubscribe => {
+      const listener = (): void => cb()
+      ipcRenderer.on(IPC.APP_FLUSH, listener)
+      return () => ipcRenderer.removeListener(IPC.APP_FLUSH, listener)
+    },
+    flushed: (): void => ipcRenderer.send(IPC.APP_FLUSHED),
     checkForUpdates: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke(IPC.APP_CHECK_FOR_UPDATES),
     installUpdate: (): Promise<void> => ipcRenderer.invoke(IPC.APP_INSTALL_UPDATE),
     captureDocument: (): Promise<void> => ipcRenderer.invoke(IPC.APP_CAPTURE_DOCUMENT),
