@@ -93,7 +93,7 @@ export function Modal({
             aria-labelledby={title ? titleId : undefined}
             aria-describedby={description ? descId : undefined}
             tabIndex={-1}
-            className={cn('flex max-h-full w-full flex-col rounded-3xl border border-line bg-elevated shadow-modal outline-none', SIZES[size], className)}
+            className={cn('flex max-h-full w-full flex-col rounded-3xl border border-[var(--border-card)] bg-elevated shadow-modal outline-none', SIZES[size], className)}
           >
             {(title || description) && (
               <div className="px-6 pt-6">

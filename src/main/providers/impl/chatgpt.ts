@@ -20,13 +20,15 @@ export const CHATGPT_MANAGE_USAGE_URL = 'https://chatgpt.com/settings/usage'
 
 const CAPABILITIES: ProviderCapabilities = {
   vision: true,
+  ocr: false,
   text: true,
   structuredOutput: true,
   ocrCleanup: true,
   tables: true,
   codeRecognition: true,
   translation: true,
-  noteActions: true
+  noteActions: true,
+  embeddings: false
 }
 
 /** Codes from the SDK / SIWC "Errors and recovery" docs → normalized codes. */

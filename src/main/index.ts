@@ -28,6 +28,7 @@ import { initScreenshotCache, purgeExpired } from './screenshotCache'
 import { prewarmOverlay } from './screenshot'
 import { terminateLocalOcr } from './ai/local'
 import { initUpdater } from './updater'
+import { API_KEY_PROVIDERS } from '../shared/providers'
 import { createProviderSystem, type ProviderSystem } from './providers'
 import { registerProviderIpc } from './providersIpc'
 import { logEvent } from './logger'
@@ -230,8 +231,9 @@ if (!gotLock) {
       resetProviders: async () => {
         await system.chatgpt.disconnect().catch(() => undefined)
         const settings = getSettings()
-        for (const provider of ['gemini', 'groq', 'openai', 'anthropic'] as const) {
+        for (const provider of API_KEY_PROVIDERS) {
           for (const key of settings.providerKeys[provider] ?? []) system.secrets.delete(key.id)
+          system.clearFields(provider)
         }
         system.activity.clear()
       }

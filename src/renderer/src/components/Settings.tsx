@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
 import { OPTIONAL_HOTKEYS, type HotkeyKind, type StorageStats, type ThemeId } from '@shared/types'
 import { useAppStore, type SettingsCategory } from '../store/useAppStore'
-import AiRecognitionSettings, { ProvidersList } from './ai/AiRecognitionSettings'
+import AiRecognitionSettings from './ai/AiRecognitionSettings'
 import UsageCenter from './ai/UsageCenter'
 import ThemePicker from './ThemePicker'
 import { HotkeyField } from './HotkeyRecorder'
@@ -28,7 +28,6 @@ import {
   HardDriveIcon,
   InfoIcon,
   KeyboardIcon,
-  PlugIcon,
   ResetIcon,
   ScanDocIcon,
   SlidersIcon
@@ -52,8 +51,12 @@ const GROUPS: { title?: string; items: CategoryInfo[] }[] = [
   {
     title: 'ИИ',
     items: [
-      { id: 'recognition', label: 'Распознавание', icon: <ScanDocIcon />, description: 'Как текст со скриншотов превращается в заметку.' },
-      { id: 'providers', label: 'Источники', icon: <PlugIcon />, description: 'Подключённые ИИ-сервисы, ключи и модели.' },
+      {
+        id: 'recognition',
+        label: 'ИИ и распознавание',
+        icon: <ScanDocIcon />,
+        description: 'Как текст со скриншотов превращается в заметку, какие ИИ-сервисы подключены и в каком порядке они используются.'
+      },
       {
         id: 'usage',
         label: 'Использование',
@@ -101,7 +104,9 @@ export function SettingsSidebar(): ReactElement {
 }
 
 export default function Settings(): ReactElement {
-  const category = useAppStore((s) => s.settingsCategory)
+  const stored = useAppStore((s) => s.settingsCategory)
+  // The former "Источники" page is part of "ИИ и распознавание" now; old links keep working.
+  const category: SettingsCategory = stored === 'providers' ? 'recognition' : stored
   const info = CATEGORIES.find((c) => c.id === category) ?? CATEGORIES[0]
   return (
     // Re-mount per category so each page starts at the top.
@@ -110,7 +115,6 @@ export default function Settings(): ReactElement {
       {category === 'general' && <GeneralPage />}
       {category === 'hotkeys' && <HotkeysPage />}
       {category === 'recognition' && <RecognitionPage />}
-      {category === 'providers' && <ProvidersList />}
       {category === 'usage' && <UsageCenter />}
       {category === 'storage' && <StoragePage />}
       {category === 'data' && <DataPage />}

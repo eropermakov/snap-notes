@@ -324,7 +324,7 @@ export default function RichTextEditor({ html, onChange, placeholder, noteId, so
           onKeyDown={handleKeyDown}
           onClick={handleContainerClick}
           data-placeholder={placeholder}
-          className="rich-content min-h-[160px] flex-1 text-fg outline-none empty:before:text-fg-disabled empty:before:content-[attr(data-placeholder)]"
+          className="rich-content min-h-[160px] flex-1 text-fg outline-none empty:before:text-fg-muted empty:before:content-[attr(data-placeholder)]"
         />
         <TableToolbar root={root} wrapper={wrapper} onChange={handleInput} />
         <CodeTools root={root} wrapper={wrapper} />

@@ -192,7 +192,7 @@ export default function NoteEditor({ noteId, layout }: Props): ReactElement | nu
               onChange={(e) => handleTitleChange(e.target.value)}
               placeholder="Заголовок"
               aria-label="Заголовок"
-              className="w-full min-w-0 bg-transparent text-2xl font-semibold tracking-[-0.01em] text-fg outline-none placeholder:text-fg-disabled"
+              className="w-full min-w-0 bg-transparent text-2xl font-semibold tracking-[-0.01em] text-fg outline-none placeholder:text-fg-muted"
             />
           </div>
 

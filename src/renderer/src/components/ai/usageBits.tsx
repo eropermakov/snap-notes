@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { StatusDot, type BadgeTone } from '../../ui'
-import type { ProviderId, ProviderStatus, UsageAccuracy, UsageWindow } from '@shared/providers'
+import type { ProviderId, ProviderPublicState, ProviderStatus, UsageAccuracy, UsageWindow } from '@shared/providers'
 import {
   STATUS_LABELS,
   accuracyPrefix,
@@ -116,5 +116,64 @@ export function UsageWindowRow({ window: w, providerId }: { window: UsageWindow;
         {w.resetAt !== undefined && <ResetCountdown resetAt={w.resetAt} accuracy={w.accuracy} providerId={providerId} />}
       </div>
     </div>
+  )
+}
+
+const MEASURE_UNIT: Record<string, string> = { tokens: 'токенов', requests: 'запросов', credits: 'кредитов' }
+
+/**
+ * One line for the collapsed provider card. Numbers appear only when the provider reported them;
+ * otherwise the line says so and shows Snap Notes' own counter, clearly labelled as local.
+ */
+export function UsageSummaryLine({ provider }: { provider: ProviderPublicState }): ReactElement | null {
+  const now = useNow(5000)
+  const usage = provider.usage
+  if (provider.local || !provider.configured) return null
+  const reported = usage.windows
+    .filter((w) => (w.accuracy === 'exact' || w.accuracy === 'provider_reported') && w.remaining !== undefined)
+    // The scarcest window is the one worth showing.
+    .sort((a, b) => (a.remainingPercent ?? 100) - (b.remainingPercent ?? 100))[0]
+  const blocked = usage.resetAt !== undefined && usage.resetAt > now
+  const parts: ReactElement[] = []
+
+  if (reported) {
+    parts.push(
+      <span key="rem" className="tabular text-fg">
+        {accuracyPrefix(reported.accuracy)}
+        {formatCount(reported.remaining!)} {MEASURE_UNIT[reported.measurement] ?? ''} осталось
+      </span>
+    )
+  } else if (usage.allocation) {
+    parts.push(<span key="alloc">{usage.allocation.label}</span>)
+  } else if (usage.credits?.balance !== undefined) {
+    parts.push(
+      <span key="credits" className="tabular text-fg">
+        Баланс: {usage.credits.balance.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} {usage.credits.currency ?? ''}
+      </span>
+    )
+  } else if (provider.localUsage) {
+    parts.push(
+      <span key="local" title="Считает сам Snap Notes. Это не остаток лимита у провайдера.">
+        Локально сегодня: {formatCount(provider.localUsage.requests)} запр.
+      </span>
+    )
+  } else {
+    parts.push(<span key="none">Остаток не сообщается</span>)
+  }
+
+  const resetAt = blocked ? usage.resetAt : (reported?.resetAt ?? usage.allocation?.resetAt)
+  const resetAccuracy = blocked ? usage.resetAccuracy : reported ? reported.accuracy : 'estimated'
+  if (resetAt !== undefined && resetAt > now) {
+    parts.push(<ResetCountdown key="reset" resetAt={resetAt} accuracy={resetAccuracy} providerId={provider.id} prefix="Сброс через" />)
+  }
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 text-sm text-fg-secondary">
+      {parts.map((part, i) => (
+        <span key={i} className="inline-flex items-center gap-2">
+          {i > 0 && <span aria-hidden className="text-fg-muted">·</span>}
+          {part}
+        </span>
+      ))}
+    </p>
   )
 }

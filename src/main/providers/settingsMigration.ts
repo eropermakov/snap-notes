@@ -3,6 +3,8 @@ import {
   DEFAULT_AI_SETTINGS,
   DEFAULT_PRIORITY,
   PROVIDER_IDS,
+  AI_PREFERENCES,
+  type AiPreference,
   type AiSettings,
   type AiUsageMode,
   type ApiKeyProviderId,
@@ -60,6 +62,7 @@ export function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiS
   }
   return {
     mode: MODES.includes(v.mode as AiUsageMode) ? (v.mode as AiUsageMode) : DEFAULT_AI_SETTINGS.mode,
+    prefer: AI_PREFERENCES.includes(v.prefer as AiPreference) ? (v.prefer as AiPreference) : DEFAULT_AI_SETTINGS.prefer,
     priority: normalizePriority(v.priority),
     autoFallback: typeof v.autoFallback === 'boolean' ? v.autoFallback : DEFAULT_AI_SETTINGS.autoFallback,
     protectLowLimits: typeof v.protectLowLimits === 'boolean' ? v.protectLowLimits : DEFAULT_AI_SETTINGS.protectLowLimits,
@@ -74,7 +77,7 @@ export function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiS
 }
 
 function normalizeKeyRefs(value: Partial<ProviderKeyRefs> | undefined): ProviderKeyRefs {
-  const result: ProviderKeyRefs = { gemini: [], groq: [], openai: [], anthropic: [] }
+  const result = Object.fromEntries(API_KEY_PROVIDERS.map((p) => [p, []])) as unknown as ProviderKeyRefs
   for (const provider of API_KEY_PROVIDERS) {
     const list = value?.[provider]
     if (!Array.isArray(list)) continue

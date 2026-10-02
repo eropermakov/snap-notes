@@ -6,6 +6,7 @@ import type {
   ProviderUsage,
   UsageWindow
 } from '../../../shared/providers'
+import { extraFields } from '../../../shared/providerCatalog'
 import { ProviderError, codeFromHttpStatus, normalizeThrown } from '../errors'
 import type { SecretStore } from '../secretStore'
 import type {
@@ -29,6 +30,8 @@ export interface ApiKeyProviderDeps {
   getKeys: () => ApiKeyRef[]
   /** Legacy plaintext lookup, used only when OS encryption was unavailable during migration. */
   getLegacyKey?: (id: string) => string | null
+  /** Extra credential fields (Cloudflare account ID, Modal endpoint, …), by field id. */
+  getFields?: () => Record<string, string>
   /** 'auto' or a model id. */
   getModel: () => string
   integrationEnabled: boolean
@@ -48,13 +51,15 @@ const KEY_RECHECK_MS = { rate: 60_000, plan: 15 * 60_000 }
 
 export const API_CAPABILITIES: ProviderCapabilities = {
   vision: true,
+  ocr: false,
   text: true,
   structuredOutput: true,
   ocrCleanup: true,
   tables: true,
   codeRecognition: true,
   translation: true,
-  noteActions: true
+  noteActions: true,
+  embeddings: false
 }
 
 /**
@@ -72,7 +77,13 @@ export abstract class ApiKeyProvider implements AIProvider {
   protected readonly fetchImpl: typeof fetch
   protected readonly now: () => number
   protected lastRateLimits: UsageWindow[] = []
-  private modelsCache: ModelInfo[] | null = null
+  /** Subclasses narrow this (text-only providers, OCR engines). */
+  protected capabilities: ProviderCapabilities = API_CAPABILITIES
+  /** Redirect policy for requests. 'error' by default so credentials are never sent to a redirected host. */
+  protected redirectMode: RequestRedirect = 'error'
+  protected modelsCache: ModelInfo[] | null = null
+  /** Why the catalog could not be read (network down, 5xx), so a provider without a default model reports the real cause. */
+  protected catalogError: ProviderError | null = null
   private readonly controllers = new Set<AbortController>()
   private readonly keyBlockedUntil = new Map<string, number>()
 
@@ -115,12 +126,26 @@ export abstract class ApiKeyProvider implements AIProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    return this.deps.integrationEnabled && this.usableKeys().length > 0
+    return this.deps.integrationEnabled && this.usableKeys().length > 0 && this.missingFields().length === 0
   }
 
   async getConnectionInfo(): Promise<ProviderConnectionInfo> {
     const keys = this.deps.getKeys().map((k) => ({ id: k.id, label: k.label, secure: this.deps.secrets.has(k.id) }))
-    return { connected: this.usableKeys().length > 0, keys }
+    const values = this.fieldValues()
+    const defs = extraFields(this.id)
+    return {
+      connected: this.usableKeys().length > 0 && this.missingFields().length === 0,
+      keys,
+      ...(defs.length
+        ? {
+            fields: defs.map((f) => ({
+              id: f.id,
+              set: Boolean(values[f.id]),
+              ...(!f.secret && values[f.id] ? { value: values[f.id] } : {})
+            }))
+          }
+        : {})
+    }
   }
 
   async getAvailableModels(options: { refresh?: boolean; cachedOnly?: boolean } = {}): Promise<ModelInfo[]> {
@@ -134,10 +159,10 @@ export abstract class ApiKeyProvider implements AIProvider {
   }
 
   getCapabilities(): ProviderCapabilities {
-    return API_CAPABILITIES
+    return this.capabilities
   }
 
-  async canServeVision(): Promise<boolean> {
+  async canServeVision(_imageBytes?: number): Promise<boolean> {
     const selected = this.deps.getModel()
     if (!selected || selected === 'auto') return true
     return this.modelVision(selected, this.modelsCache) !== false
@@ -193,7 +218,19 @@ export abstract class ApiKeyProvider implements AIProvider {
     return this.autoModel(this.modelsCache, vision)
   }
 
-  private usableKeys(): { id: string; label: string; value: string }[] {
+  /** Extra credential values the user saved (account ID, endpoint, …). */
+  protected fieldValues(): Record<string, string> {
+    return this.deps.getFields?.() ?? {}
+  }
+
+  private missingFields(): string[] {
+    const values = this.fieldValues()
+    return extraFields(this.id)
+      .filter((f) => f.required && !values[f.id]?.trim())
+      .map((f) => f.id)
+  }
+
+  protected usableKeys(): { id: string; label: string; value: string }[] {
     const result: { id: string; label: string; value: string }[] = []
     for (const ref of this.deps.getKeys()) {
       const value = this.deps.secrets.get(ref.id) ?? this.deps.getLegacyKey?.(ref.id) ?? null
@@ -211,8 +248,10 @@ export abstract class ApiKeyProvider implements AIProvider {
     if (!this.modelsCache) {
       try {
         this.modelsCache = await this.withSignal((signal) => this.listModels(keys[0].value, signal), request.signal)
+        this.catalogError = null
       } catch (err) {
         const error = normalizeThrown(this.id, err)
+        this.catalogError = error
         if (error.code === 'AUTH' || error.code === 'CANCELLED') throw error
         // The catalog is optional; fall back to documented defaults.
       }
@@ -279,7 +318,7 @@ export abstract class ApiKeyProvider implements AIProvider {
   protected async http(url: string, init: RequestInit, signal: AbortSignal): Promise<HttpResponse> {
     let response: Response
     try {
-      response = await this.fetchImpl(url, { ...init, signal, redirect: 'error' })
+      response = await this.fetchImpl(url, { ...init, signal, redirect: this.redirectMode })
     } catch (err) {
       if (signal.aborted) throw err
       throw normalizeThrown(this.id, err)

@@ -2,7 +2,7 @@
 
 ## Стек
 
-Electron + React 19 + TypeScript (electron-vite), Tailwind CSS 3 (цвета через CSS-переменные), Framer Motion, Zustand, electron-store, electron-updater, `tesseract.js` (офлайн-OCR), Vitest. ИИ-провайдеры: ChatGPT (Sign in with ChatGPT), Gemini, Groq, OpenAI API, Anthropic API.
+Electron + React 19 + TypeScript (electron-vite), Tailwind CSS 3 (цвета через CSS-переменные), Framer Motion, Zustand, electron-store, electron-updater, `tesseract.js` (офлайн-OCR), Vitest. ИИ-провайдеры: ChatGPT (Sign in with ChatGPT), Gemini, Groq, OpenAI API, Anthropic API, OpenRouter, Mistral, Cerebras, Cloudflare Workers AI, NVIDIA NIM, Cohere, Hugging Face и необязательный Modal OCR.
 
 ## Запуск
 
@@ -10,6 +10,7 @@ Electron + React 19 + TypeScript (electron-vite), Tailwind CSS 3 (цвета ч�
 npm install
 npm run dev         # окно с hot-reload
 npm run typecheck   # типы main + renderer
+npm run lint        # ESLint
 npm test            # тесты (Vitest)
 npm run build       # typecheck + сборка в out/
 npm run dist        # установщик локально, без публикации → release/
@@ -44,7 +45,7 @@ src/
     ├── hooks/       # адаптивный layout
     ├── store/       # Zustand
     └── styles/      # токены и стили содержимого заметок
-tests/           # Vitest: блоки, захват, провайдеры
+tests/           # Vitest: блоки, захват, провайдеры, контраст тёмной темы
 ```
 
 ### Интерфейс
@@ -52,6 +53,20 @@ tests/           # Vitest: блоки, захват, провайдеры
 - Каркас: панель разделов слева (только глобальные режимы), контекстная боковая панель раздела, рабочая область. Корзина — фильтр внутри «Заметок», «Использование ИИ» — категория настроек.
 - Цвета — семантические токены в `styles/index.css` (`--bg-primary`, `--surface-1`, `--text-secondary`, `--accent`…) и классы Tailwind (`bg-canvas`, `text-fg-secondary`, `border-line`). Модификатор прозрачности вроде `bg-accent/50` с ними не работает — Tailwind молча не генерирует класс; используйте `opacity-*`.
 - Новый UI собирается из `src/renderer/src/ui`, редкие действия — в меню заметки (`components/notes/NoteMenuItems.tsx`) или в палитру команд (`Ctrl+K`), а не новыми кнопками на экране.
+
+### ИИ-провайдеры
+
+- **Статическая конфигурация** (названия, официальные ссылки «Получить ключ», поля учётных данных, тариф, имена переменных для экспорта .env) — `src/shared/providerCatalog.ts`. Модели, лимиты и остатки там не хранятся: они приходят от провайдера во время работы (`src/main/providers`).
+- **Новый OpenAI-совместимый провайдер** = запись в `providerCatalog.ts` + объект `OpenAICompatConfig` в `src/main/providers/impl/compatProviders.ts` (baseUrl, заголовки, разбор списка моделей, парсер лимитов, ранжирование моделей для «Автоматически») + строка регистрации в `providers/index.ts` + id в `src/shared/providers.ts`. Запросы, JSON-режим с повтором без него, классификация ошибок и 429 уже есть в `openaiCompatible.ts`.
+- Особые API — отдельные адаптеры: `impl/mistral.ts` (OCR-эндпоинт), `impl/cohere.ts` (v2 chat), `impl/gemini.ts` (нативный SDK).
+- **Скриншот** отправляется только провайдеру с возможностью `vision` (и моделью с изображениями); текстовые — `Скриншот → Tesseract → текстовый ИИ → блоки` (`recognition.ts`). OCR-движки (Mistral OCR, Modal) отдают Markdown, он превращается в блоки локально (`src/shared/markdownBlocks.ts`).
+- **Роутер** (`router.ts`): «Что предпочитать» = `free | quality | speed | custom`; при 429, исчерпании квоты, таймауте, сетевой ошибке, недоступной модели переходит к следующему, в конце всегда Tesseract.
+- **Учётные данные**: ключ — как раньше (`secrets.json`, Electron safeStorage/DPAPI, ссылки на ключи в настройках), дополнительные поля (Cloudflare Account ID, Modal Token ID/Endpoint) — там же под id `field-<провайдер>-<поле>`. Рендереру значения не отдаются; «Показать» и «Копировать» — отдельные IPC по явному действию, «Экспорт API-ключей» — нативное предупреждение и окно сохранения в main-процессе.
+- Тесты: `tests/providers/*` (моки; реальные API не вызываются). Проверка вживую без своего профиля: `electron . --user-data-dir=<временная папка>`; закрывайте приложение штатно — при принудительном завершении сразу после первого запуска Chromium может не успеть сохранить ключ шифрования (`Local State`) и сохранённые ключи станут нечитаемыми.
+
+### Тёмная тема
+
+Токены — в блоке `[data-theme$='-dark']` файла `styles/index.css`; лесенка поверхностей: фон приложения < панель < карточка < приподнятая < выбранная. Контраст проверяет `tests/theme/darkTheme.test.ts` (WCAG: основной текст ≥ 7:1, вторичный и приглушённый ≥ 4,5:1, границы полей ≥ 3:1). Новые токены (`--border-card`, `--border-input`, `--surface-selected`, …) в светлой теме равны прежним значениям, поэтому общие компоненты светлую тему не меняют.
 
 ### Заметки и распознавание
 

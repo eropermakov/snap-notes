@@ -33,6 +33,8 @@ export default {
         sidebar: 'var(--bg-secondary)',
         'surface-1': 'var(--surface-1)',
         'surface-2': 'var(--surface-2)',
+        'surface-selected': 'var(--surface-selected)',
+        input: 'var(--input-bg)',
         hover: 'var(--surface-hover)',
         active: 'var(--surface-active)',
         elevated: 'var(--surface-elevated)',
@@ -74,6 +76,7 @@ export default {
         popover: 'var(--shadow-popover)',
         modal: 'var(--shadow-modal)',
         toast: 'var(--shadow-popover)',
+        card: 'var(--shadow-card)',
         focus: '0 0 0 3px var(--focus-ring)'
       },
       transitionDuration: {

@@ -22,6 +22,15 @@ export interface IntegrationFlags {
   anthropicApi: boolean
   geminiApi: boolean
   groqApi: boolean
+  openrouterApi: boolean
+  mistralApi: boolean
+  cerebrasApi: boolean
+  cloudflareAi: boolean
+  nvidiaNim: boolean
+  cohereApi: boolean
+  huggingfaceApi: boolean
+  /** Optional Advanced provider: your own OCR endpoint on Modal. */
+  modalOcr: boolean
   tesseract: boolean
 }
 
@@ -34,6 +43,14 @@ export const DEFAULT_FLAGS: IntegrationFlags = {
   anthropicApi: true,
   geminiApi: true,
   groqApi: true,
+  openrouterApi: true,
+  mistralApi: true,
+  cerebrasApi: true,
+  cloudflareAi: true,
+  nvidiaNim: true,
+  cohereApi: true,
+  huggingfaceApi: true,
+  modalOcr: true,
   tesseract: true
 }
 

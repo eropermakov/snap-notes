@@ -26,13 +26,15 @@ export interface LocalOcrEngine {
 
 const CAPABILITIES: ProviderCapabilities = {
   vision: true,
+  ocr: true,
   text: false,
   structuredOutput: false,
   ocrCleanup: false,
   tables: false,
   codeRecognition: false,
   translation: false,
-  noteActions: false
+  noteActions: false,
+  embeddings: false
 }
 
 /** Offline OCR. Always available, no limits, and always the last fallback. Nothing leaves the computer. */

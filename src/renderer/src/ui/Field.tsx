@@ -4,7 +4,7 @@ import { SearchIcon, ChevronDownIcon, CloseIcon } from '../components/icons'
 import { Kbd } from './Badge'
 
 const FIELD =
-  'rounded-xl border border-line bg-surface-2 text-base text-fg transition-[border-color,box-shadow,background-color] duration-fast ease-out hover:border-line-strong focus-within:border-[var(--border-focus)] focus-within:bg-canvas focus-within:shadow-focus'
+  'rounded-xl border border-[var(--border-input)] bg-input text-base text-fg transition-[border-color,box-shadow,background-color] duration-fast ease-out hover:border-[var(--border-strong)] focus-within:border-[var(--border-focus)] focus-within:bg-canvas focus-within:shadow-focus'
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   leading?: ReactNode
@@ -151,7 +151,7 @@ export function Toggle({ checked, onChange, disabled, ...aria }: ToggleProps): R
       onClick={() => onChange(!checked)}
       className={cn(
         'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-base ease-out disabled:opacity-45',
-        checked ? 'bg-accent' : 'bg-[var(--border-normal)]'
+        checked ? 'bg-accent' : 'bg-[var(--toggle-off)]'
       )}
       {...aria}
     >

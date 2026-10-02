@@ -49,13 +49,15 @@ export class ClaudeSubscriptionProvider implements AIProvider {
   getCapabilities(): ProviderCapabilities {
     return {
       vision: false,
+      ocr: false,
       text: false,
       structuredOutput: false,
       ocrCleanup: false,
       tables: false,
       codeRecognition: false,
       translation: false,
-      noteActions: false
+      noteActions: false,
+      embeddings: false
     }
   }
   async canServeVision(): Promise<boolean> {

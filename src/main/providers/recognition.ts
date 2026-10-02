@@ -1,5 +1,6 @@
 import { PROVIDER_NAMES, type AiSettings, type OperationType, type ProviderId, type RoutingNotice } from '../../shared/providers'
 import { looksLikeJsonAttempt, extractBlockItems } from '../../shared/structuredJson'
+import { markdownToBlockJson } from '../../shared/markdownBlocks'
 import { AllProvidersFailedError } from './router'
 import type { ProviderManager } from './manager'
 import type { LocalOcrResult, TesseractProvider } from './impl/tesseract'
@@ -101,7 +102,11 @@ export class RecognitionService {
     const mode = this.getSettings().mode
     if (mode === 'offline') return this.localOnly(png, mode)
 
-    if (mode === 'best') return this.visionPath(png, prompts, mode, 'OCR_VISION', null)
+    if (mode === 'best') {
+      // Only text models connected (no provider can take an image)? Screenshot → Tesseract → text model.
+      const plan = await this.manager.plan(['vision'], false, 'OCR_VISION', png.length)
+      if (plan.order.length > 0) return this.visionPath(png, prompts, mode, 'OCR_VISION', null)
+    }
 
     // Assigned inside a closure; the cast keeps TypeScript from narrowing it to null.
     let local = null as LocalOcrResult | null
@@ -123,7 +128,7 @@ export class RecognitionService {
     }
     if (!local) return this.visionPath(png, prompts, mode, 'OCR_VISION', null)
 
-    if (mode === 'economy') return this.textPath(local, prompts, mode)
+    if (mode === 'economy' || mode === 'best') return this.textPath(local, prompts, mode)
 
     const assessment = assessComplexity(local)
     if (assessment.reasons.includes('empty')) {
@@ -163,6 +168,7 @@ export class RecognitionService {
         operation,
         requiredCapabilities: ['vision'],
         imageSent: true,
+        imageBytes: png.length,
         // Tesseract is the last fallback; skip re-running it when its result is already in hand.
         includeLocalFallback: localResult === null,
         run: async (provider) => {
@@ -174,19 +180,49 @@ export class RecognitionService {
         }
       })
       const usedProvider = this.manager.get(outcome.provider)
-      if (usedProvider?.local) {
-        return {
-          ...this.output(outcome.result.text, false, outcome.provider, outcome.result.model, outcome.notice, true, mode),
-          localLines: fallbackLocal?.lines
-        }
+      if (usedProvider?.local && fallbackLocal) {
+        // Every vision provider was skipped or failed: Tesseract → text model still gives a structured note.
+        return this.refineLocal(fallbackLocal, prompts, mode, outcome.notice)
+      }
+      if (outcome.result.format === 'markdown') {
+        // An OCR engine (Mistral OCR, Modal): Markdown → note blocks locally, no second AI request.
+        const raw = markdownToBlockJson(outcome.result.text)
+        return this.output(raw, true, outcome.provider, outcome.result.model, outcome.notice, false, mode)
       }
       const raw = await this.ensureJson(outcome.provider, outcome.result.text, prompts.jsonRepair)
       return this.output(raw, extractBlockItems(raw) !== null, outcome.provider, outcome.result.model, outcome.notice, false, mode)
     } catch (err) {
       if (err instanceof AllProvidersFailedError && localResult) {
-        return { ...this.output(localResult.text, false, 'tesseract', 'tesseract', this.failureNotice(err), true, mode), localLines: localResult.lines }
+        return this.refineLocal(localResult, prompts, mode, this.failureNotice(err))
       }
       throw err
+    }
+  }
+
+  /**
+   * Local OCR text after the vision route failed: let a text provider fix and structure it. If none
+   * is reachable the local text is the result. `visionNotice` (what was skipped) is kept either way.
+   */
+  private async refineLocal(
+    local: LocalOcrResult,
+    prompts: RecognitionPrompts,
+    mode: AiSettings['mode'],
+    visionNotice: RoutingNotice | null
+  ): Promise<RecognitionOutput> {
+    const refined = await this.textPath(local, prompts, mode)
+    if (refined.provider === 'tesseract') {
+      return { ...refined, notice: visionNotice ?? refined.notice, offlineFallback: true }
+    }
+    // A provider that failed the image request and again the text request is listed once.
+    const skipped = [...(visionNotice?.skipped ?? []), ...(refined.notice?.skipped ?? [])].filter(
+      (entry, index, all) => all.findIndex((other) => other.provider === entry.provider) === index
+    )
+    return {
+      ...refined,
+      offlineFallback: false,
+      notice: skipped.length
+        ? { usedProvider: refined.provider, usedProviderName: refined.providerName, skipped, offlineFallback: false }
+        : null
     }
   }
 

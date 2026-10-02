@@ -1,3 +1,4 @@
+import { PROVIDER_CATALOG } from '../../shared/providerCatalog'
 import {
   PROVIDER_NAMES,
   type AiSettings,
@@ -35,6 +36,8 @@ export interface ExecuteOptions {
   imageSent: boolean
   /** Add Tesseract as the final fallback (only meaningful for vision OCR). */
   includeLocalFallback: boolean
+  /** Size of the image about to be sent, so providers with an inline-size limit can opt out. */
+  imageBytes?: number
   run: (provider: AIProvider) => Promise<ProviderResult>
   /** Run on exactly this provider (still subject to privacy/offline rules), e.g. a JSON repair retry. */
   onlyProvider?: ProviderId
@@ -137,7 +140,7 @@ export class ProviderManager {
     this.emit()
   }
 
-  async publicState(id: ProviderId): Promise<ProviderPublicState | null> {
+  async publicState(id: ProviderId, today = this.deps.activity.summary()): Promise<ProviderPublicState | null> {
     const provider = this.providers.get(id)
     if (!provider) return null
     const integration = provider.getIntegration()
@@ -163,7 +166,10 @@ export class ProviderManager {
       usage: this.deps.usage.getUsage(id),
       models,
       selectedModel: settings.models[id] ?? 'auto',
-      ...(this.deps.usage.getLastError(id) ? { lastError: this.deps.usage.getLastError(id) } : {})
+      ...(this.deps.usage.getLastError(id) ? { lastError: this.deps.usage.getLastError(id) } : {}),
+      ...(today.byProvider[id] && !provider.local
+        ? { localUsage: { requests: today.byProvider[id]!.requests, failures: today.byProvider[id]!.failures, tokens: today.byProvider[id]!.totalTokens } }
+        : {})
     }
   }
 
@@ -172,11 +178,12 @@ export class ProviderManager {
     const order: ProviderId[] = [...settings.priority.filter((id) => this.providers.has(id))]
     for (const id of this.providers.keys()) if (!order.includes(id) && id !== 'tesseract') order.push(id)
     if (this.providers.has('tesseract')) order.push('tesseract')
-    const states = await Promise.all(order.map((id) => this.publicState(id)))
+    const today = this.deps.activity.summary()
+    const states = await Promise.all(order.map((id) => this.publicState(id, today)))
     return states.filter((s): s is ProviderPublicState => s !== null)
   }
 
-  private async candidates(requiresVision: boolean): Promise<RouteCandidate[]> {
+  private async candidates(requiresVision: boolean, imageBytes?: number): Promise<RouteCandidate[]> {
     const result: RouteCandidate[] = []
     for (const provider of this.providers.values()) {
       const integration = provider.getIntegration()
@@ -189,7 +196,7 @@ export class ProviderManager {
       let canServeVision = false
       if (usable && requiresVision) {
         try {
-          canServeVision = await provider.canServeVision()
+          canServeVision = await provider.canServeVision(imageBytes)
         } catch {
           canServeVision = false
         }
@@ -201,14 +208,22 @@ export class ProviderManager {
         capabilities: provider.getCapabilities(),
         canServeVision,
         status: this.deps.usage.getStatus(provider.id),
-        remainingPercent: this.deps.usage.getRemainingPercent(provider.id)
+        remainingPercent: this.deps.usage.getRemainingPercent(provider.id),
+        costClass: PROVIDER_CATALOG[provider.id]?.costClass,
+        qualityRank: PROVIDER_CATALOG[provider.id]?.qualityRank,
+        speedRank: PROVIDER_CATALOG[provider.id]?.speedRank
       })
     }
     return result
   }
 
   /** Plans a route for the current settings (used by the UI to show "what would be used"). */
-  async plan(requiredCapabilities: Capability[], includeLocalFallback: boolean, operation: OperationType = 'OCR_VISION') {
+  async plan(
+    requiredCapabilities: Capability[],
+    includeLocalFallback: boolean,
+    operation: OperationType = 'OCR_VISION',
+    imageBytes?: number
+  ) {
     const settings = this.deps.getSettings()
     return planRoute(
       {
@@ -217,12 +232,13 @@ export class ProviderManager {
         privacyMode: settings.mode === 'offline' ? 'offline' : 'cloud',
         networkOnline: this.deps.usage.isOnline(),
         userPriority: settings.priority,
+        prefer: settings.prefer,
         preferredProvider: settings.preferredProvider,
         protectLowLimits: settings.protectLowLimits,
         autoFallback: settings.autoFallback,
         includeLocalFallback
       },
-      await this.candidates(requiredCapabilities.includes('vision'))
+      await this.candidates(requiredCapabilities.includes('vision'), imageBytes)
     )
   }
 
@@ -232,7 +248,7 @@ export class ProviderManager {
    * because planRoute excludes them before any request is built.
    */
   async execute(options: ExecuteOptions): Promise<ExecuteOutcome> {
-    const plan = await this.plan(options.requiredCapabilities, options.includeLocalFallback, options.operation)
+    const plan = await this.plan(options.requiredCapabilities, options.includeLocalFallback, options.operation, options.imageBytes)
     if (options.onlyProvider) {
       const provider = this.providers.get(options.onlyProvider)
       const settings = this.deps.getSettings()

@@ -72,7 +72,7 @@ export default function NoteCard({ note, listMode }: Props): ReactElement {
           onContextMenu={onContextMenu}
           className={cn(
             'group flex cursor-default items-center gap-4 rounded-xl px-4 py-2.5 transition-colors duration-fast',
-            selected ? 'bg-active' : 'hover:bg-hover'
+            selected ? 'bg-surface-selected' : 'hover:bg-hover'
           )}
         >
           <div className="min-w-0 flex-1">
@@ -113,7 +113,7 @@ export default function NoteCard({ note, listMode }: Props): ReactElement {
         onContextMenu={onContextMenu}
         className={cn(
           'group relative flex cursor-default flex-col rounded-2xl border p-4 transition-colors duration-fast ease-out',
-          selected ? 'border-line-strong bg-surface-2' : 'border-line bg-surface-1 hover:border-line-strong hover:bg-surface-2'
+          selected ? 'border-[var(--border-strong)] bg-surface-selected shadow-card' : 'border-[var(--border-card)] bg-surface-1 shadow-card hover:border-[var(--border-strong)] hover:bg-surface-2'
         )}
       >
         {hasTitle && (

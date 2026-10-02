@@ -9,7 +9,7 @@ Snap Notes — десктоп-приложение для Windows (Electron + Re
 - **Путь проекта:** `D:\SirVault\WeewScan 1`
 - **Репозиторий:** https://github.com/eropermakov/snap-notes (код запушен, история коммитов сохранена)
 - **Релизы:** https://github.com/eropermakov/snap-notes/releases — там же лежат `.exe`-установщики
-- **Текущая версия:** 1.4.0
+- **Текущая версия:** 1.5.0
 - **Язык интерфейса:** русский, везде
 
 ## Стек
@@ -62,6 +62,13 @@ npm run release       # собрать И опубликовать релиз н
 - Тесты: `npm test` (vitest, только моки, реальные API не вызываются) — `tests/providers/`
 - Журнал: `userData/logs/snap-notes.log` (без ключей/токенов/текста)
 - Проверка вживую без трогания своего профиля: `electron . --user-data-dir=<временная папка>`
+
+### 14 ИИ-источников и контрастная тёмная тема (v1.5)
+- Добавлены OpenRouter, Mistral, Cerebras, Cloudflare Workers AI, NVIDIA NIM, Cohere, Hugging Face, Modal OCR (опционально, `integrations/modal/`). Общий клиент — `impl/openaiCompatible.ts` + конфиги в `impl/compatProviders.ts`; Mistral (`impl/mistral.ts`, OCR-эндпоинт) и Cohere (`impl/cohere.ts`) — свои адаптеры; Gemini остался на нативном SDK. Статическая конфигурация провайдеров — `src/shared/providerCatalog.ts` (ссылки «Получить ключ», тариф, поля, имена .env)
+- Настройки: единый раздел «ИИ и распознавание» (режим, «Что предпочитать», карточки источников, «Дополнительно → Экспорт API-ключей»). Дополнительные поля учётных данных (Cloudflare Account ID, Modal Token ID/Endpoint) лежат в `secrets.json` под `field-<провайдер>-<поле>`
+- Роутер: `AiSettings.prefer` = free/quality/speed/custom; текстовые модели получают текст после Tesseract, OCR-движки возвращают Markdown → блоки (`src/shared/markdownBlocks.ts`)
+- Остаток/сброс — только от провайдера (Groq, Cerebras, OpenRouter `/key`, Mistral; Cohere Trial — если пришлёт заголовки); Cloudflare — документированная квота 10 000 нейронов/сутки без процентов; везде отдельно «Локальный счётчик Snap Notes»
+- Тёмная тема: токены в `styles/index.css`, проверка контраста — `tests/theme/darkTheme.test.ts`. Линтер: `npm run lint`
 
 ### Блочный формат заметок (v1.4)
 - `src/shared/blocks.ts` — типы блоков, `htmlToBlocks`/`blocksToHtml` (круговой обмен с сохранением `data-block`/`data-src`), санитайзинг inline-HTML; `blockExport.ts` — Markdown / «для AI» / текст / rich HTML / TSV / CSV

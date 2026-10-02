@@ -255,3 +255,92 @@ export function nextPacificMidnight(now = Date.now()): number {
   const secondsIntoDay = Number(parts.hour) * 3600 + Number(parts.minute) * 60 + Number(parts.second)
   return now + (86400 - secondsIntoDay) * 1000 - (now % 1000)
 }
+
+/**
+ * Cerebras: x-ratelimit-{limit,remaining,reset}-requests-day and -tokens-minute. Reset values are
+ * seconds until the window refills.
+ */
+export function parseCerebrasRateLimits(headers: HeaderSource, now = Date.now()): UsageWindow[] {
+  const windows: UsageWindow[] = []
+  const requests = buildWindow({
+    id: 'requests-day',
+    label: 'Запросы в сутки',
+    measurement: 'requests',
+    limit: parseCount(getHeader(headers, 'x-ratelimit-limit-requests-day')),
+    remaining: parseCount(getHeader(headers, 'x-ratelimit-remaining-requests-day')),
+    resetAt: durationReset(headers, 'x-ratelimit-reset-requests-day', now),
+    now
+  })
+  if (requests) windows.push(requests)
+  const tokens = buildWindow({
+    id: 'tokens-minute',
+    label: 'Токены в минуту',
+    measurement: 'tokens',
+    limit: parseCount(getHeader(headers, 'x-ratelimit-limit-tokens-minute')),
+    remaining: parseCount(getHeader(headers, 'x-ratelimit-remaining-tokens-minute')),
+    resetAt: durationReset(headers, 'x-ratelimit-reset-tokens-minute', now),
+    now
+  })
+  if (tokens) windows.push(tokens)
+  return windows
+}
+
+/**
+ * Cohere trial keys: x-trial-endpoint-call-limit / x-trial-endpoint-call-remaining, when the API
+ * sends them. Absent headers produce no window (nothing is guessed).
+ */
+export function parseCohereTrialLimits(headers: HeaderSource, now = Date.now()): UsageWindow[] {
+  const window = buildWindow({
+    id: 'trial-calls',
+    label: 'Вызовы Trial-ключа',
+    measurement: 'requests',
+    limit: parseCount(getHeader(headers, 'x-trial-endpoint-call-limit')),
+    remaining: parseCount(getHeader(headers, 'x-trial-endpoint-call-remaining')),
+    now
+  })
+  return window ? [window] : []
+}
+
+export interface OpenRouterKeyUsage {
+  windows: UsageWindow[]
+  credits?: { balance?: number; currency: string; accuracy: 'provider_reported' }
+  isFreeTier?: boolean
+}
+
+function num(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+/**
+ * OpenRouter GET /api/v1/key. `free_model_daily_requests` is the remaining daily budget of `:free`
+ * models; `limit_remaining` is the key's credit cap (null = unlimited, then no balance is shown).
+ */
+export function parseOpenRouterKey(body: unknown, now = Date.now()): OpenRouterKeyUsage {
+  const root = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
+  const data = (root.data && typeof root.data === 'object' ? root.data : root) as Record<string, unknown>
+  const windows: UsageWindow[] = []
+  const free = data.free_model_daily_requests as Record<string, unknown> | undefined
+  if (free && typeof free === 'object') {
+    const window = buildWindow({
+      id: 'free-requests-day',
+      label: 'Запросы к бесплатным моделям в сутки',
+      measurement: 'requests',
+      limit: num(free.limit),
+      remaining: num(free.remaining),
+      now
+    })
+    if (window) windows.push(window)
+  }
+  const remainingCredits = num(data.limit_remaining)
+  return {
+    windows,
+    ...(remainingCredits !== undefined ? { credits: { balance: remainingCredits, currency: 'USD', accuracy: 'provider_reported' as const } } : {}),
+    ...(typeof data.is_free_tier === 'boolean' ? { isFreeTier: data.is_free_tier } : {})
+  }
+}
+
+/** Next 00:00 UTC as ms (Cloudflare documents Workers AI free allocation resetting then). */
+export function nextUtcMidnight(now = Date.now()): number {
+  const date = new Date(now)
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1)
+}

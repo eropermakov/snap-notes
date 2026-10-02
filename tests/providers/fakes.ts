@@ -24,13 +24,15 @@ import type {
 
 export const FULL_CAPS: ProviderCapabilities = {
   vision: true,
+  ocr: false,
   text: true,
   structuredOutput: true,
   ocrCleanup: true,
   tables: true,
   codeRecognition: true,
   translation: true,
-  noteActions: true
+  noteActions: true,
+  embeddings: false
 }
 
 export type Behavior = (request: VisionRequest | TextRequest) => Promise<ProviderResult>

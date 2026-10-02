@@ -1,10 +1,11 @@
 import { useState, type DragEvent, type ReactElement } from 'react'
-import type { AiUsageMode, ProviderId, ProviderPublicState } from '@shared/providers'
+import type { AiPreference, AiUsageMode, ProviderId, ProviderPublicState } from '@shared/providers'
 import { useAppStore } from '../../store/useAppStore'
-import { ChoiceList, IconButton, Section, Select, SettingsGroup, SettingsRow, Toggle, cn } from '../../ui'
+import { Button, ChoiceList, IconButton, Section, Select, SettingsGroup, SettingsRow, Toggle, cn } from '../../ui'
 import { ArrowDownIcon, ArrowUpIcon, GripIcon } from '../icons'
 import ProviderCard from './ProviderCard'
 import { StatusPill } from './usageBits'
+import { PROVIDER_CATALOG } from '@shared/providerCatalog'
 
 const MODES: { value: AiUsageMode; label: string; description: string }[] = [
   { value: 'best', label: 'Лучшее качество', description: 'Скриншот сразу получает модель с распознаванием изображений.' },
@@ -25,7 +26,7 @@ function PriorityList({ providers }: { providers: ProviderPublicState[] }): Reac
   if (!settings) return <div />
 
   const byId = new Map(providers.map((p) => [p.id, p]))
-  const order = settings.ai.priority.filter((id) => byId.has(id) && byId.get(id)!.integrationEnabled)
+  const order = settings.ai.priority.filter((id) => byId.has(id) && byId.get(id)!.integrationEnabled && byId.get(id)!.configured)
 
   const move = (id: ProviderId, to: number): void => {
     const current = settings.ai.priority.filter((p) => p !== id)
@@ -60,8 +61,8 @@ function PriorityList({ providers }: { providers: ProviderPublicState[] }): Reac
           >
             <GripIcon className="h-4 w-4 shrink-0 cursor-grab text-fg-muted" />
             <span className="tabular w-4 text-sm text-fg-muted">{index + 1}</span>
-            <span className={cn('flex-1 text-base', p.configured ? 'text-fg' : 'text-fg-secondary')}>{p.name}</span>
-            {p.configured ? <StatusPill status={p.status} /> : <span className="text-sm text-fg-muted">не подключён</span>}
+            <span className="flex-1 text-base text-fg">{p.name}</span>
+            <StatusPill status={p.status} />
             <span className="flex gap-0.5 opacity-0 transition-opacity duration-fast group-focus-within:opacity-100 group-hover:opacity-100">
               <IconButton size="sm" label="Выше" icon={<ArrowUpIcon className="h-3.5 w-3.5" />} disabled={index === 0} onClick={() => move(id, index - 1)} />
               <IconButton
@@ -87,7 +88,14 @@ function PriorityList({ providers }: { providers: ProviderPublicState[] }): Reac
   )
 }
 
-/** Settings → Распознавание: AI mode, routing, priority, diagnostics. */
+const PREFERENCES: { value: AiPreference; label: string; description: string }[] = [
+  { value: 'free', label: 'Бесплатные источники', description: 'Сначала бесплатные тарифы, потом платные. Порядок внутри группы — ваш.' },
+  { value: 'quality', label: 'Лучшее качество', description: 'Сначала самые сильные модели.' },
+  { value: 'speed', label: 'Самые быстрые', description: 'Сначала самые быстрые источники.' },
+  { value: 'custom', label: 'Свой порядок', description: 'Источники пробуются строго в том порядке, который вы задали ниже.' }
+]
+
+/** Settings → ИИ и распознавание: mode, automatic routing, source cards, advanced. */
 export default function AiRecognitionSettings(): ReactElement {
   const settings = useAppStore((s) => s.settings)
   const providers = useAppStore((s) => s.providers)
@@ -99,7 +107,7 @@ export default function AiRecognitionSettings(): ReactElement {
 
   return (
     <>
-      <Section title="Режим ИИ" description="Как Snap Notes распознаёт скриншоты. Источник выбирается автоматически.">
+      <Section title="Режим" description="Как Snap Notes распознаёт скриншоты. Источник выбирается автоматически.">
         <ChoiceList aria-label="Режим использования ИИ" value={ai.mode} onChange={(mode) => void updateAiSettings({ mode })} options={MODES} />
         <p className="mt-3 text-sm text-fg-secondary">
           {ai.mode === 'offline' ? (
@@ -118,11 +126,38 @@ export default function AiRecognitionSettings(): ReactElement {
       </Section>
 
       {ai.mode !== 'offline' && (
-        <Section title="Выбор источника">
-          <SettingsGroup>
+        <Section
+          title="Что предпочитать"
+          description="Для скриншота нужен источник, который умеет читать изображения; чисто текстовые модели получают текст после Tesseract."
+        >
+          <ChoiceList
+            aria-label="Что предпочитать при автоматическом выборе"
+            value={ai.prefer}
+            onChange={(prefer) => void updateAiSettings({ prefer })}
+            options={PREFERENCES}
+          />
+        </Section>
+      )}
+
+      <Section title="Источники" description={sourcesSummary(providers)}>
+        <ProvidersList />
+      </Section>
+
+      {ai.mode !== 'offline' && ai.prefer === 'custom' && (
+        <Section
+          title="Порядок источников"
+          description="Перетащите, чтобы изменить порядок. Источник без нужной возможности (например, распознавания изображений) пропускается автоматически."
+        >
+          <PriorityList providers={providers} />
+        </Section>
+      )}
+
+      <Section title="Дополнительно">
+        <SettingsGroup>
+          {ai.mode !== 'offline' && (
             <SettingsRow
               title="Источник"
-              description="Какой ИИ использовать в первую очередь."
+              description="Принудительно использовать один источник вместо автоматического выбора."
               control={
                 <Select
                   aria-label="Источник"
@@ -130,7 +165,7 @@ export default function AiRecognitionSettings(): ReactElement {
                   onChange={(e) =>
                     void updateAiSettings({ preferredProvider: e.target.value === 'auto' ? null : (e.target.value as ProviderId) })
                   }
-                  wrapperClassName="w-[200px]"
+                  wrapperClassName="w-[220px]"
                 >
                   <option value="auto">Автоматически</option>
                   {providers
@@ -143,43 +178,29 @@ export default function AiRecognitionSettings(): ReactElement {
                 </Select>
               }
             />
-            <SettingsRow
-              title="Автоматический переход на другой ИИ"
-              description="Если у источника закончился лимит, ошибка или нет ответа — попробовать следующий."
-              control={
-                <Toggle
-                  aria-label="Автоматический переход на другой ИИ"
-                  checked={ai.autoFallback}
-                  onChange={(checked) => void updateAiSettings({ autoFallback: checked })}
-                />
-              }
-            />
-            <SettingsRow
-              title="Беречь заканчивающиеся лимиты"
-              description="Если провайдер сообщает, что осталось меньше 20%, сначала использовать другие источники."
-              control={
-                <Toggle
-                  aria-label="Беречь заканчивающиеся лимиты"
-                  checked={ai.protectLowLimits}
-                  onChange={(checked) => void updateAiSettings({ protectLowLimits: checked })}
-                />
-              }
-            />
-          </SettingsGroup>
-        </Section>
-      )}
-
-      {ai.mode !== 'offline' && (
-        <Section
-          title="Приоритет"
-          description="Перетащите, чтобы изменить порядок. Источник без нужной возможности (например, распознавания изображений) пропускается автоматически."
-        >
-          <PriorityList providers={providers} />
-        </Section>
-      )}
-
-      <Section title="Диагностика">
-        <SettingsGroup>
+          )}
+          <SettingsRow
+            title="Автоматический переход на другой источник"
+            description="Если у источника закончился лимит, ошибка, нет сети или нет ответа — попробовать следующий. Заметка всё равно будет создана: в крайнем случае текст распознаёт Tesseract."
+            control={
+              <Toggle
+                aria-label="Автоматический переход на другой источник"
+                checked={ai.autoFallback}
+                onChange={(checked) => void updateAiSettings({ autoFallback: checked })}
+              />
+            }
+          />
+          <SettingsRow
+            title="Беречь заканчивающиеся лимиты"
+            description="Если провайдер сообщает, что осталось меньше 20%, сначала использовать другие источники."
+            control={
+              <Toggle
+                aria-label="Беречь заканчивающиеся лимиты"
+                checked={ai.protectLowLimits}
+                onChange={(checked) => void updateAiSettings({ protectLowLimits: checked })}
+              />
+            }
+          />
           <SettingsRow
             title="Подробный журнал"
             description="Записывать в журнал фрагменты ответов ИИ. По умолчанию в журнал попадают только технические данные — без ключей, токенов и текста заметок."
@@ -191,13 +212,58 @@ export default function AiRecognitionSettings(): ReactElement {
               />
             }
           />
+          <ExportKeysRow />
         </SettingsGroup>
       </Section>
     </>
   )
 }
 
-/** Settings → Источники ИИ: every provider as an expandable row. */
+function sourcesSummary(providers: ProviderPublicState[]): string {
+  const cloud = providers.filter((p) => !p.local && p.integrationEnabled && PROVIDER_CATALOG[p.id].fields.length + (p.id === 'chatgpt' ? 1 : 0) > 0)
+  const connected = cloud.filter((p) => p.configured).length
+  return `Подключено ${connected} из ${cloud.length}. Ключи хранятся зашифрованными средствами Windows и не покидают этот компьютер.`
+}
+
+/** Settings → … → Дополнительно → Экспорт API-ключей. The warning and the Save dialog are native, in the main process. */
+function ExportKeysRow(): ReactElement {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  const run = async (): Promise<void> => {
+    setBusy(true)
+    setResult(null)
+    const response = await window.api.providers.exportKeys()
+    setBusy(false)
+    if (response.cancelled) return
+    setResult({
+      ok: response.ok,
+      message: response.ok
+        ? `Сохранено ключей и параметров: ${response.count}. Храните файл как пароль.`
+        : (response.message ?? 'Не удалось сохранить файл.')
+    })
+  }
+
+  return (
+    <SettingsRow
+      title="Экспорт API-ключей"
+      description="Сохранить все ваши ключи в файл .env, например чтобы перенести их в другую программу. Файл содержит секреты в открытом виде — перед сохранением будет предупреждение."
+      control={
+        <Button size="sm" loading={busy} onClick={() => void run()}>
+          Экспортировать…
+        </Button>
+      }
+    >
+      {result && (
+        <p role="status" className={cn('text-sm', result.ok ? 'text-success' : 'text-danger')}>
+          {result.message}
+        </p>
+      )}
+    </SettingsRow>
+  )
+}
+
+/** Every provider as a card. Fixed (priority) order, so a card never jumps while it is being set up. */
 export function ProvidersList(): ReactElement {
   const providers = useAppStore((s) => s.providers)
   const [focused, setFocused] = useState<ProviderId | null>(null)
@@ -208,15 +274,9 @@ export function ProvidersList(): ReactElement {
   }
 
   return (
-    <div className="divide-y divide-line border-y border-line">
+    <div className="space-y-3">
       {providers.map((provider) => (
-        <ProviderCard
-          key={provider.id}
-          provider={provider}
-          onConnectAlternative={jumpTo}
-          defaultOpen={provider.configured && !provider.local}
-          forceOpen={focused === provider.id}
-        />
+        <ProviderCard key={provider.id} provider={provider} onConnectAlternative={jumpTo} forceOpen={focused === provider.id} />
       ))}
     </div>
   )

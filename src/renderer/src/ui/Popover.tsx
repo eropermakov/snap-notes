@@ -107,7 +107,7 @@ export function Popover({
           style={{ left: pos?.x ?? -9999, top: pos?.y ?? -9999, visibility: pos ? 'visible' : 'hidden' }}
           onMouseLeave={hoverCard ? () => onCloseRef.current() : undefined}
           className={cn(
-            'fixed z-[300] rounded-xl border border-line bg-elevated text-fg shadow-popover outline-none',
+            'fixed z-[300] rounded-xl border border-[var(--border-card)] bg-elevated text-fg shadow-popover outline-none',
             className
           )}
         >

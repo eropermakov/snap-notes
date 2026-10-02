@@ -72,7 +72,20 @@ export interface ProviderKeyRef {
 
 export type ProviderKeyRefs = Record<ApiKeyProviderId, ProviderKeyRef[]>
 
-export const EMPTY_PROVIDER_KEYS: ProviderKeyRefs = { gemini: [], groq: [], openai: [], anthropic: [] }
+export const EMPTY_PROVIDER_KEYS: ProviderKeyRefs = {
+  gemini: [],
+  groq: [],
+  openai: [],
+  anthropic: [],
+  openrouter: [],
+  mistral: [],
+  cerebras: [],
+  cloudflare: [],
+  nvidia: [],
+  cohere: [],
+  huggingface: [],
+  modal: []
+}
 
 export interface AppSettings {
   /** Legacy plaintext keys awaiting migration. Main process only; always [] in the renderer. */

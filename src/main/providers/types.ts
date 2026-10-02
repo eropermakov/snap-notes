@@ -44,6 +44,11 @@ export interface ProviderResult {
   rateLimits?: UsageWindow[]
   /** Short description of where rateLimits came from, e.g. "x-ratelimit-* (ключ Gemini #2)". */
   rateLimitSource?: string
+  /**
+   * 'markdown' = the text is an OCR engine's Markdown (not the JSON block schema). The recognition
+   * service converts it to note blocks locally, so no second AI request is needed.
+   */
+  format?: 'markdown'
 }
 
 export interface HealthCheckResult {
@@ -83,8 +88,11 @@ export interface AIProvider {
   /** refresh = re-fetch from the provider; cachedOnly = never touch the network (UI state). */
   getAvailableModels(options?: { refresh?: boolean; cachedOnly?: boolean }): Promise<ModelInfo[]>
   getCapabilities(): ProviderCapabilities
-  /** Whether a vision request could be served with the current model selection (false = skip). */
-  canServeVision(): Promise<boolean>
+  /**
+   * Whether a vision request could be served with the current model selection (false = skip).
+   * `imageBytes` lets providers with an inline-image size limit decline screenshots that do not fit.
+   */
+  canServeVision(imageBytes?: number): Promise<boolean>
   runVision(request: VisionRequest): Promise<ProviderResult>
   runText(request: TextRequest): Promise<ProviderResult>
   runStructuredOutput(request: VisionRequest | TextRequest): Promise<ProviderResult>

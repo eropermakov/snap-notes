@@ -6,19 +6,80 @@
  * (see src/main/providers/secretStore.ts).
  */
 
-export type ProviderId = 'chatgpt' | 'claude' | 'gemini' | 'groq' | 'openai' | 'anthropic' | 'tesseract'
+export type ProviderId =
+  | 'chatgpt'
+  | 'claude'
+  | 'gemini'
+  | 'groq'
+  | 'openai'
+  | 'anthropic'
+  | 'openrouter'
+  | 'mistral'
+  | 'cerebras'
+  | 'cloudflare'
+  | 'nvidia'
+  | 'cohere'
+  | 'huggingface'
+  | 'modal'
+  | 'tesseract'
 
-export const PROVIDER_IDS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'groq', 'openai', 'anthropic', 'tesseract']
+export const PROVIDER_IDS: ProviderId[] = [
+  'chatgpt',
+  'claude',
+  'gemini',
+  'groq',
+  'openai',
+  'anthropic',
+  'openrouter',
+  'mistral',
+  'cerebras',
+  'cloudflare',
+  'nvidia',
+  'cohere',
+  'huggingface',
+  'modal',
+  'tesseract'
+]
 
-/** Providers whose credential is an API key the user pastes into Settings. */
-export type ApiKeyProviderId = 'gemini' | 'groq' | 'openai' | 'anthropic'
-export const API_KEY_PROVIDERS: ApiKeyProviderId[] = ['gemini', 'groq', 'openai', 'anthropic']
+/** Providers whose credential is an API key (or token) the user pastes into Settings. */
+export type ApiKeyProviderId =
+  | 'gemini'
+  | 'groq'
+  | 'openai'
+  | 'anthropic'
+  | 'openrouter'
+  | 'mistral'
+  | 'cerebras'
+  | 'cloudflare'
+  | 'nvidia'
+  | 'cohere'
+  | 'huggingface'
+  | 'modal'
+export const API_KEY_PROVIDERS: ApiKeyProviderId[] = [
+  'gemini',
+  'groq',
+  'openai',
+  'anthropic',
+  'openrouter',
+  'mistral',
+  'cerebras',
+  'cloudflare',
+  'nvidia',
+  'cohere',
+  'huggingface',
+  'modal'
+]
 
 export type ProviderKind = 'subscription' | 'api' | 'local'
 export type AuthenticationType = 'oauth' | 'api_key' | 'none'
 
 export interface ProviderCapabilities {
   vision: boolean
+  /**
+   * A dedicated OCR engine (e.g. Mistral OCR, a Modal OCR endpoint): takes an image and returns
+   * Markdown/text, ignores JSON-schema prompts. Its output is converted to note blocks locally.
+   */
+  ocr: boolean
   text: boolean
   structuredOutput: boolean
   ocrCleanup: boolean
@@ -26,6 +87,7 @@ export interface ProviderCapabilities {
   codeRecognition: boolean
   translation: boolean
   noteActions: boolean
+  embeddings: boolean
 }
 
 export type Capability = keyof ProviderCapabilities
@@ -86,6 +148,18 @@ export interface ProviderUsage {
   /** Official page where the user can see/manage usage. Opened in the system browser. */
   manageUrl?: string
   stale?: boolean
+  /**
+   * A documented free allocation without a remaining counter (e.g. Cloudflare "10 000 Neurons/day").
+   * Shown as a fact; never as a percentage. resetAt follows the documented rule ('estimated').
+   */
+  allocation?: { label: string; resetAt?: number; resetRule?: string }
+}
+
+/** Snap Notes' own count of today's requests for one provider. Not the provider's remaining quota. */
+export interface LocalUsage {
+  requests: number
+  failures: number
+  tokens: number
 }
 
 export type ProviderErrorCode =
@@ -120,6 +194,20 @@ export interface ModelInfo {
   displayName: string
   /** true/false only when known (catalog field or documented model family); undefined = unknown. */
   vision?: boolean
+  /** true = costs nothing to call (provider-reported pricing), false = paid, undefined = unknown. */
+  free?: boolean
+  /** Context window in tokens, when the catalog reports it. Used to rank Automatic choices. */
+  contextLength?: number
+  /** The catalog says the model supports structured/JSON output. */
+  structured?: boolean
+}
+
+/** One non-key credential field of a provider (Cloudflare account ID, Modal endpoint, …). */
+export interface ProviderFieldState {
+  id: string
+  set: boolean
+  /** Only for non-secret fields (account ID, endpoint URL); secrets never leave the main process. */
+  value?: string
 }
 
 export interface ProviderKeyInfo {
@@ -138,6 +226,8 @@ export interface ProviderConnectionInfo {
   /** ChatGPT only: sign-in in progress (browser open). */
   connecting?: boolean
   keys?: ProviderKeyInfo[]
+  /** Extra credential fields besides the key (see providerCatalog.ts). */
+  fields?: ProviderFieldState[]
 }
 
 /** Everything the UI needs about one provider. Never contains credentials. */
@@ -160,12 +250,19 @@ export interface ProviderPublicState {
   models: ModelInfo[]
   selectedModel: string
   lastError?: ProviderErrorInfo
+  /** Snap Notes' local counter for today ("Local usage"), when it has sent any requests. */
+  localUsage?: LocalUsage
 }
 
 export type AiUsageMode = 'best' | 'balanced' | 'economy' | 'offline'
 
+/** What Automatic optimizes for. 'custom' = the user's own provider order. */
+export type AiPreference = 'free' | 'quality' | 'speed' | 'custom'
+export const AI_PREFERENCES: AiPreference[] = ['free', 'quality', 'speed', 'custom']
+
 export interface AiSettings {
   mode: AiUsageMode
+  prefer: AiPreference
   /** Priority for cloud providers. Tesseract is never listed: it is always the last fallback. */
   priority: ProviderId[]
   autoFallback: boolean
@@ -180,10 +277,26 @@ export interface AiSettings {
   chatgptWelcomeSeen: boolean
 }
 
-export const DEFAULT_PRIORITY: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'groq', 'openai', 'anthropic']
+export const DEFAULT_PRIORITY: ProviderId[] = [
+  'chatgpt',
+  'claude',
+  'gemini',
+  'groq',
+  'openrouter',
+  'mistral',
+  'cerebras',
+  'cloudflare',
+  'nvidia',
+  'cohere',
+  'huggingface',
+  'modal',
+  'openai',
+  'anthropic'
+]
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   mode: 'balanced',
+  prefer: 'free',
   priority: DEFAULT_PRIORITY,
   autoFallback: true,
   protectLowLimits: true,
@@ -255,5 +368,13 @@ export const PROVIDER_NAMES: Record<ProviderId, string> = {
   groq: 'Groq',
   openai: 'OpenAI API',
   anthropic: 'Anthropic API',
+  openrouter: 'OpenRouter',
+  mistral: 'Mistral',
+  cerebras: 'Cerebras',
+  cloudflare: 'Cloudflare Workers AI',
+  nvidia: 'NVIDIA NIM',
+  cohere: 'Cohere',
+  huggingface: 'Hugging Face',
+  modal: 'Modal OCR',
   tesseract: 'Tesseract'
 }

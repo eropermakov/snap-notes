@@ -33,6 +33,18 @@
   --danger: #d93025;
   --danger-hover: #b3261e;
 
+  /* Tokens added for the dark theme; in light they alias the existing values (no visual change). */
+  --surface-selected: var(--surface-2);
+  --input-bg: var(--surface-2);
+  --border-strong: var(--border-normal);
+  --border-input: var(--border-subtle);
+  --border-card: var(--border-subtle);
+  --toggle-off: var(--border-normal);
+  --link: var(--text-primary);
+  --caret: auto;
+  --selection-bg: color-mix(in srgb, var(--accent) 28%, transparent);
+  --shadow-card: none;
+
   --scrim: rgba(15, 16, 15, 0.28);
   --shadow-popover: 0 0 0 1px rgba(20, 22, 20, 0.04), 0 8px 24px -6px rgba(20, 22, 20, 0.16), 0 2px 6px rgba(20, 22, 20, 0.05);
   --shadow-modal: 0 0 0 1px rgba(20, 22, 20, 0.04), 0 24px 64px -12px rgba(20, 22, 20, 0.28);
@@ -43,32 +55,47 @@
 [data-theme$='-dark'] {
   color-scheme: dark;
 
-  --bg-primary: #1a1c1b;
-  --bg-secondary: #151716;
-  --surface-1: #202221;
-  --surface-2: #242625;
-  --surface-hover: rgba(255, 255, 255, 0.05);
-  --surface-active: rgba(255, 255, 255, 0.085);
-  --surface-elevated: #232524;
+  /*
+   * Surface ladder (each step is visibly lighter than the one below):
+   * app background < rail < card (surface-1) < raised / inputs' neighbours (surface-2) < selected.
+   * Cool blue-grey neutrals, not OLED black. Contrast is checked by tests/theme/darkTheme.test.ts.
+   */
+  --bg-primary: #0c0e11; /* app / workspace */
+  --bg-secondary: #101318; /* rail + context sidebar */
+  --surface-1: #161a20; /* cards, grouped rows */
+  --surface-2: #1d222a; /* raised: hovered card, wells, code blocks */
+  --surface-selected: #252c37; /* selected / open */
+  --surface-hover: rgba(205, 220, 245, 0.075);
+  --surface-active: rgba(205, 220, 245, 0.125);
+  --surface-elevated: #202630; /* popovers, menus, modals */
+  --input-bg: #0f1217; /* inset field */
 
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border-normal: rgba(255, 255, 255, 0.11);
+  --border-subtle: #262c36; /* dividers */
+  --border-normal: #363e4b; /* card / control outline */
+  --border-strong: #4b5667; /* hovered or selected outline, buttons */
+  --border-input: #697589; /* input & checkbox boundary (>= 3:1 on every surface) */
+  --border-card: #363e4b;
+  --toggle-off: #4f5a6c;
 
-  --text-primary: #e8e9e8;
-  --text-secondary: #a2a5a2;
-  --text-muted: #707370;
-  --text-disabled: #4d504d;
+  --text-primary: #f5f7fa;
+  --text-secondary: #b8c0cc;
+  --text-muted: #9aa6b8; /* placeholders, meta (>= 4.5:1 on every surface) */
+  --text-disabled: #667286;
+  --link: #86b6ff;
+  --caret: var(--accent);
+  --selection-bg: color-mix(in srgb, var(--accent) 38%, transparent);
 
   --success: #6dd58c;
   --warning: #f4bf52;
   --danger: #f2877e;
   --danger-hover: #f6a19a;
 
-  --scrim: rgba(0, 0, 0, 0.5);
-  --shadow-popover: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-modal: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 28px 72px -12px rgba(0, 0, 0, 0.72);
-  --scrollbar: rgba(255, 255, 255, 0.12);
-  --scrollbar-hover: rgba(255, 255, 255, 0.22);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 14px -6px rgba(0, 0, 0, 0.45);
+  --shadow-popover: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 12px 32px -8px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 28px 72px -12px rgba(0, 0, 0, 0.75);
+  --scrollbar: rgba(205, 220, 245, 0.18);
+  --scrollbar-hover: rgba(205, 220, 245, 0.32);
 }
 
 /* Accent colours — used sparingly. `--accent-contrast` is the text colour on a filled accent. */
@@ -95,6 +122,7 @@
   --danger-soft: color-mix(in srgb, var(--danger) 12%, transparent);
   --focus-ring: color-mix(in srgb, var(--accent) 38%, transparent);
   --border-focus: color-mix(in srgb, var(--accent) 70%, transparent);
+  --focus-outline: var(--border-focus);
 
   /* Legacy aliases kept for rich content and any stray class. */
   --color-bg: var(--bg-primary);
@@ -103,6 +131,13 @@
   --color-ink: var(--text-primary);
   --color-muted: var(--text-secondary);
   --color-accent: var(--accent);
+}
+
+/* Dark: focus is a solid accent ring (never only a background change). */
+[data-theme$='-dark'] {
+  --border-focus: var(--accent);
+  --focus-outline: var(--accent);
+  --focus-ring: color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 @layer base {
@@ -142,7 +177,13 @@
   }
 
   ::selection {
-    background: color-mix(in srgb, var(--accent) 28%, transparent);
+    background: var(--selection-bg);
+  }
+
+  input,
+  textarea,
+  [contenteditable='true'] {
+    caret-color: var(--caret);
   }
 
   /* Focus is always visible for keyboard users, invisible for mouse users. */
@@ -150,7 +191,7 @@
     outline: none;
   }
   :focus-visible {
-    outline: 2px solid var(--border-focus);
+    outline: 2px solid var(--focus-outline);
     outline-offset: 2px;
   }
   input:focus-visible,
@@ -244,7 +285,7 @@
 }
 .rich-content td,
 .rich-content th {
-  border: 1px solid var(--border-normal);
+  border: 1px solid var(--border-strong);
   padding: 0.35em 0.6em;
   text-align: left;
 }
@@ -278,9 +319,9 @@
   margin-top: 0;
 }
 .rich-content a[href] {
-  color: var(--text-primary);
+  color: var(--link);
   text-decoration: underline;
-  text-decoration-color: var(--border-normal);
+  text-decoration-color: color-mix(in srgb, var(--link) 55%, transparent);
   text-underline-offset: 3px;
 }
 .rich-content a[href]:hover {
@@ -290,7 +331,7 @@
   font-family: 'Cascadia Mono', Consolas, ui-monospace, monospace;
   font-size: 0.88em;
   background: var(--surface-2);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-card);
   border-radius: 4px;
   padding: 0.08em 0.35em;
 }
@@ -299,7 +340,7 @@
   margin: 0 0 0.8em;
   padding: 12px 14px;
   background: var(--surface-2);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-card);
   border-radius: 10px;
   overflow-x: auto;
   white-space: pre;
@@ -325,7 +366,7 @@
 .rich-content blockquote {
   margin: 0 0 0.8em;
   padding: 0.1em 0 0.1em 1em;
-  border-left: 2px solid var(--border-normal);
+  border-left: 2px solid var(--border-strong);
   color: var(--text-secondary);
 }
 .rich-content thead th,
@@ -341,7 +382,7 @@
 
 .ui-chip {
   display: inline-block;
-  border: 1px solid var(--border-normal);
+  border: 1px solid var(--border-strong);
   background: var(--surface-2);
   border-radius: 6px;
   padding: 0.05em 0.55em;
@@ -380,7 +421,7 @@
   top: 0.3em;
   width: 1em;
   height: 1em;
-  border: 1.5px solid var(--border-normal);
+  border: 1.5px solid var(--border-strong);
   border-radius: 4px;
   background: var(--bg-primary);
 }

@@ -132,6 +132,20 @@ const api = {
     /** The key is sent to the main process once; it is never returned to the renderer. */
     setKey: (provider: ApiKeyProviderId, input: { apiKey: string; keyId?: string; label?: string }): Promise<ActionResult> =>
       ipcRenderer.invoke(IPC.PROVIDERS_SET_KEY, provider, input),
+    /** Non-key credential fields (Cloudflare account ID, Modal token ID / endpoint). */
+    setFields: (provider: ApiKeyProviderId, values: Record<string, string>): Promise<ActionResult> =>
+      ipcRenderer.invoke(IPC.PROVIDERS_SET_FIELDS, provider, values),
+    /** Returns a saved secret only after an explicit user action (Reveal). */
+    revealSecret: (provider: ApiKeyProviderId, ref: { keyId?: string; field?: string }): Promise<{ ok: boolean; value?: string }> =>
+      ipcRenderer.invoke(IPC.PROVIDERS_REVEAL_SECRET, provider, ref),
+    /** Copies in the main process: the secret never reaches the renderer. */
+    copySecret: (provider: ApiKeyProviderId, ref: { keyId?: string; field?: string }): Promise<ActionResult> =>
+      ipcRenderer.invoke(IPC.PROVIDERS_COPY_SECRET, provider, ref),
+    /** Opens the provider's official key page in the system browser. */
+    openKeyPage: (provider: ProviderId): Promise<ActionResult> => ipcRenderer.invoke(IPC.PROVIDERS_OPEN_KEY_PAGE, provider),
+    /** Warning dialog → Save dialog → .env file. Always an explicit action. */
+    exportKeys: (): Promise<ActionResult & { cancelled?: boolean; count?: number; path?: string }> =>
+      ipcRenderer.invoke(IPC.PROVIDERS_EXPORT_KEYS),
     renameKey: (provider: ApiKeyProviderId, keyId: string, label: string): Promise<ActionResult> =>
       ipcRenderer.invoke(IPC.PROVIDERS_RENAME_KEY, provider, keyId, label),
     removeKey: (provider: ApiKeyProviderId, keyId: string): Promise<ActionResult> =>

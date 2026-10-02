@@ -1,5 +1,6 @@
 import {
   isBlockingStatus,
+  type AiPreference,
   type Capability,
   type OperationType,
   type ProviderCapabilities,
@@ -21,6 +22,10 @@ export interface RouteCandidate {
   status: ProviderStatus
   /** Provider-reported remaining %, only when known. */
   remainingPercent?: number
+  /** Static ranking facts from the provider catalog (see providerCatalog.ts). */
+  costClass?: 'free' | 'included' | 'advanced' | 'paid'
+  qualityRank?: number
+  speedRank?: number
 }
 
 export interface RouteRequest {
@@ -31,6 +36,8 @@ export interface RouteRequest {
   networkOnline: boolean
   /** User priority for cloud providers (drag & drop order). */
   userPriority: ProviderId[]
+  /** What Automatic optimizes for. Missing = 'custom' (the user's own order). */
+  prefer?: AiPreference
   /** Manual provider choice; the router respects it. */
   preferredProvider: ProviderId | null
   protectLowLimits: boolean
@@ -88,7 +95,21 @@ export function planRoute(request: RouteRequest, candidates: RouteCandidate[]): 
   }
 
   const byPriority = (a: RouteCandidate, b: RouteCandidate): number => priorityIndex(a.id) - priorityIndex(b.id)
-  const cloud = eligible.filter((c) => !c.local).sort(byPriority)
+  const costGroup = (c: RouteCandidate): number => (c.costClass === 'paid' ? 2 : c.costClass === 'advanced' ? 1 : 0)
+  // The user's order always breaks ties, so "Prefer free" keeps their ranking inside each group.
+  const byStrategy = (a: RouteCandidate, b: RouteCandidate): number => {
+    switch (request.prefer) {
+      case 'free':
+        return costGroup(a) - costGroup(b) || byPriority(a, b)
+      case 'quality':
+        return (a.qualityRank ?? 99) - (b.qualityRank ?? 99) || byPriority(a, b)
+      case 'speed':
+        return (a.speedRank ?? 99) - (b.speedRank ?? 99) || byPriority(a, b)
+      default:
+        return byPriority(a, b)
+    }
+  }
+  const cloud = eligible.filter((c) => !c.local).sort(byStrategy)
   const local = eligible.filter((c) => c.local)
 
   // A manual choice goes first, even if it is currently blocked: the user asked for it explicitly.

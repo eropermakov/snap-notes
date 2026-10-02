@@ -27,6 +27,11 @@ export const IPC = {
 
   PROVIDERS_LIST: 'providers:list',
   PROVIDERS_SET_KEY: 'providers:setKey',
+  PROVIDERS_SET_FIELDS: 'providers:setFields',
+  PROVIDERS_REVEAL_SECRET: 'providers:revealSecret',
+  PROVIDERS_COPY_SECRET: 'providers:copySecret',
+  PROVIDERS_OPEN_KEY_PAGE: 'providers:openKeyPage',
+  PROVIDERS_EXPORT_KEYS: 'providers:exportKeys',
   PROVIDERS_RENAME_KEY: 'providers:renameKey',
   PROVIDERS_REMOVE_KEY: 'providers:removeKey',
   PROVIDERS_TEST: 'providers:test',

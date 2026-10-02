@@ -1,4 +1,8 @@
-import { ipcMain, shell, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { app, clipboard, dialog, ipcMain, shell, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { writeFileSync } from 'fs'
+import path from 'path'
+import { PROVIDER_CATALOG } from '../shared/providerCatalog'
+import { buildEnvFile } from './providers/credentialExport'
 import { IPC } from '../shared/ipc'
 import { API_KEY_PROVIDERS, PROVIDER_IDS, type ApiKeyProviderId, type ProviderId } from '../shared/providers'
 import type { ProviderSystem } from './providers'
@@ -14,14 +18,13 @@ import type { AiAction } from '../shared/ocrPrompts'
 const AI_ACTIONS: AiAction[] = ['shorten', 'explain', 'rewrite', 'translate', 'list', 'keypoints']
 
 /** Official usage pages only. Opened in the system browser, never embedded. */
-const MANAGE_USAGE_URLS: Partial<Record<ProviderId, string>> = {
-  chatgpt: CHATGPT_MANAGE_USAGE_URL,
-  claude: CLAUDE_MANAGE_USAGE_URL,
-  gemini: 'https://aistudio.google.com/usage',
-  groq: 'https://console.groq.com/settings/limits',
-  openai: 'https://platform.openai.com/usage',
-  anthropic: 'https://platform.claude.com/usage'
+function manageUrl(provider: ProviderId): string | undefined {
+  if (provider === 'chatgpt') return CHATGPT_MANAGE_USAGE_URL
+  if (provider === 'claude') return CLAUDE_MANAGE_USAGE_URL
+  return PROVIDER_CATALOG[provider]?.manageUrl
 }
+
+const CLIPBOARD_CLEAR_MS = 60_000
 
 export interface ActionResult {
   ok: boolean
@@ -86,6 +89,97 @@ export function registerProviderIpc(system: ProviderSystem, getMainWindow: () =>
     }
   })
 
+  handle(IPC.PROVIDERS_SET_FIELDS, async (provider, values) => {
+    if (!isApiKeyProvider(provider) || !values || typeof values !== 'object') return { ok: false, message: 'Некорректные данные.' }
+    const clean: Record<string, string> = {}
+    for (const [id, value] of Object.entries(values as Record<string, unknown>)) {
+      if (typeof value !== 'string') return { ok: false, message: 'Некорректные данные.' }
+      clean[id] = value
+    }
+    try {
+      await system.setFields(provider, clean)
+      return { ok: true }
+    } catch (err) {
+      return failure(err)
+    }
+  })
+
+  // Reveal / Copy are explicit user actions on one saved credential. Nothing is returned otherwise.
+  const secretRef = (ref: unknown): { keyId?: string; field?: string } | null => {
+    const data = (ref ?? {}) as { keyId?: unknown; field?: unknown }
+    if (typeof data.keyId === 'string') return { keyId: data.keyId }
+    if (typeof data.field === 'string') return { field: data.field }
+    return null
+  }
+
+  handle(IPC.PROVIDERS_REVEAL_SECRET, (provider, ref) => {
+    const parsed = secretRef(ref)
+    if (!isApiKeyProvider(provider) || !parsed) return { ok: false }
+    const value = system.readSecret(provider, parsed)
+    return value ? { ok: true, value } : { ok: false }
+  })
+
+  handle(IPC.PROVIDERS_COPY_SECRET, (provider, ref) => {
+    const parsed = secretRef(ref)
+    if (!isApiKeyProvider(provider) || !parsed) return { ok: false }
+    const value = system.readSecret(provider, parsed)
+    if (!value) return { ok: false, message: 'Значение не найдено.' }
+    clipboard.writeText(value)
+    // A copied secret does not stay on the clipboard: it is cleared after a minute unless replaced.
+    setTimeout(() => {
+      try {
+        if (clipboard.readText() === value) clipboard.clear()
+      } catch {
+        /* clipboard unavailable: nothing to clear */
+      }
+    }, CLIPBOARD_CLEAR_MS).unref()
+    return { ok: true, message: 'Скопировано. Буфер обмена очистится через минуту.' }
+  })
+
+  handle(IPC.PROVIDERS_OPEN_KEY_PAGE, async (provider) => {
+    if (!isProviderId(provider)) return { ok: false }
+    const url = PROVIDER_CATALOG[provider]?.keyUrl
+    if (!url) return { ok: false }
+    await shell.openExternal(url)
+    return { ok: true }
+  })
+
+  handle(IPC.PROVIDERS_EXPORT_KEYS, async () => {
+    const credentials = system.collectCredentials()
+    if (credentials.length === 0) return { ok: false, message: 'Нет сохранённых ключей для экспорта.' }
+    const win = getMainWindow()
+    const options = {
+      type: 'warning' as const,
+      title: 'Экспорт API-ключей',
+      message: 'This file contains secret API credentials. Anyone with this file may use your accounts.',
+      detail:
+        'Файл будет содержать ваши секретные API-ключи в открытом виде. Любой, у кого он окажется, сможет пользоваться вашими аккаунтами. Не публикуйте его, не добавляйте в Git и не храните в облачных папках.',
+      buttons: ['Отмена', 'Я понимаю, продолжить'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true
+    }
+    const confirm = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options)
+    if (confirm.response !== 1) return { ok: false, cancelled: true }
+
+    const saveOptions = {
+      title: 'Сохранить API-ключи',
+      defaultPath: path.join(app.getPath('documents'), 'SnapNotes_API_KEYS.env'),
+      filters: [{ name: 'Env file', extensions: ['env'] }, { name: 'Все файлы', extensions: ['*'] }]
+    }
+    const save = win && !win.isDestroyed() ? await dialog.showSaveDialog(win, saveOptions) : await dialog.showSaveDialog(saveOptions)
+    if (save.canceled || !save.filePath) return { ok: false, cancelled: true }
+    try {
+      writeFileSync(save.filePath, buildEnvFile(credentials.map(({ env, value }) => ({ env, value }))), { encoding: 'utf-8', mode: 0o600 })
+      // Only the count is logged — never a name or a value.
+      logEvent('provider', { action: 'export-keys', ok: true, count: credentials.length })
+      return { ok: true, count: credentials.length, path: save.filePath }
+    } catch (err) {
+      logEvent('provider', { action: 'export-keys', ok: false })
+      return failure(err)
+    }
+  })
+
   handle(IPC.PROVIDERS_RENAME_KEY, (provider, keyId, label) => {
     if (!isApiKeyProvider(provider) || typeof keyId !== 'string' || typeof label !== 'string') return { ok: false }
     system.renameKey(provider, keyId, label)
@@ -139,6 +233,7 @@ export function registerProviderIpc(system: ProviderSystem, getMainWindow: () =>
     try {
       if (isApiKeyProvider(provider)) {
         for (const key of (await target.getConnectionInfo()).keys ?? []) await system.removeKey(provider, key.id)
+        system.clearFields(provider)
       } else {
         await target.disconnect()
       }
@@ -176,7 +271,7 @@ export function registerProviderIpc(system: ProviderSystem, getMainWindow: () =>
 
   handle(IPC.PROVIDERS_OPEN_MANAGE_USAGE, async (provider) => {
     if (!isProviderId(provider)) return { ok: false }
-    const url = MANAGE_USAGE_URLS[provider]
+    const url = manageUrl(provider)
     if (!url) return { ok: false }
     await shell.openExternal(url)
     return { ok: true }
