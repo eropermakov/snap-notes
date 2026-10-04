@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
 import { OPTIONAL_HOTKEYS, type CardSize, type HotkeyKind, type OcrFeedback, type StorageStats, type ThemeId } from '@shared/types'
 import { SORT_LABELS, type SortOrder } from '@shared/noteList'
-import { EDITOR_FONTS, FONT_SIZE_MAX, FONT_SIZE_MIN } from '@shared/settingsSanitize'
+import { BUNDLED_EDITOR_FONTS, EDITOR_FONTS, FONT_SIZE_MAX, FONT_SIZE_MIN } from '@shared/settingsSanitize'
 import { useAppStore, type SettingsCategory } from '../store/useAppStore'
 import AiRecognitionSettings from './ai/AiRecognitionSettings'
 import UsageCenter from './ai/UsageCenter'
@@ -395,7 +395,8 @@ function EditorPage(): ReactElement | null {
 
   if (!settings) return null
   const current = settings.editorFontFamily
-  const options = current && !installed.includes(current) ? [current, ...installed] : installed
+  const bundled = BUNDLED_EDITOR_FONTS.some((name) => `${name} Variable` === current)
+  const options = current && !bundled && !installed.includes(current) ? [current, ...installed] : installed
 
   return (
     <>
@@ -403,15 +404,20 @@ function EditorPage(): ReactElement | null {
         <SettingsGroup>
           <SettingsRow
             title="Шрифт"
-            description="Применяется только к тексту в редакторе. По умолчанию — шрифт приложения."
+            description="12 встроенных шрифтов с кириллицей работают без интернета. Выберите удобный для чтения — пример ниже."
             control={
               <Select aria-label="Шрифт редактора" value={current} onChange={(e) => void updateSettings({ editorFontFamily: e.target.value })} wrapperClassName="w-56">
                 <option value="">Как в приложении</option>
-                {options.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
+                <optgroup label="Встроенные · с кириллицей">
+                  {BUNDLED_EDITOR_FONTS.map((name) => <option key={name} value={`${name} Variable`}>{name}</option>)}
+                </optgroup>
+                <optgroup label="Системные">
+                  {options.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </optgroup>
               </Select>
             }
           />
@@ -446,7 +452,8 @@ function EditorPage(): ReactElement | null {
             } as CSSProperties
           }
         >
-          <p>Так будет выглядеть текст заметки: обычный абзац, <strong>жирный</strong> и <em>курсив</em>.</p>
+          <p>Хорошие мысли любят свободное место. Запишите главное, добавьте детали и вернитесь к ним, когда будет удобно.</p>
+          <p>Обычный текст, <strong>важная мысль</strong> и <em>тихая ремарка</em>. Цифры: 0123456789. English text.</p>
           <pre>
             <code>const code = 'всегда моноширинный'</code>
           </pre>

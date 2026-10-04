@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import type { CardSize } from '@shared/types'
 import { SORT_LABELS, type SortOrder } from '@shared/noteList'
@@ -11,6 +11,7 @@ import { CloseIcon, DownloadIcon, FolderIcon, GridIcon, ListIcon, PinIcon, PlusI
 import NotesGrid from '../NotesGrid'
 import Trash from '../Trash'
 import NoteEditor from '../NoteEditor'
+import EditorFrame from '../editor/EditorFrame'
 import { formatAccelerator } from '../HotkeyRecorder'
 import { ColorPickerButton } from './ColorPicker'
 
@@ -42,6 +43,7 @@ export default function NotesWorkspace({ layout }: { layout: LayoutSize }): Reac
   const selectedCount = useAppStore((s) => s.selection.selected.length)
   const ocrQueue = useAppStore((s) => s.ocrQueue)
   const [confirmEmpty, setConfirmEmpty] = useState(false)
+  const workspaceRef = useRef<HTMLDivElement>(null)
 
   const visible = useVisibleNotes()
   const count = filter === 'trash' ? trashNotes.length : visible.notes.length
@@ -57,7 +59,7 @@ export default function NotesWorkspace({ layout }: { layout: LayoutSize }): Reac
   const sortKeys = useMemo(() => Object.keys(SORT_LABELS) as SortOrder[], [])
 
   return (
-    <div className="relative flex h-full min-w-0">
+    <div ref={workspaceRef} className="relative flex h-full min-w-0">
       <div className={cn('flex min-w-0 flex-1 flex-col', editorCovers && 'invisible')} aria-hidden={editorCovers || undefined}>
         {selectedCount > 0 && filter !== 'trash' ? (
           <SelectionBar orderedIds={visible.notes.map((n) => n.id)} />
@@ -134,7 +136,11 @@ export default function NotesWorkspace({ layout }: { layout: LayoutSize }): Reac
       </div>
 
       <AnimatePresence>
-        {editorOpen && editorNoteId && <NoteEditor key={editorNoteId} noteId={editorNoteId} layout={layout} />}
+        {editorOpen && editorNoteId && (
+          <EditorFrame key="editor-frame" workspace={workspaceRef} layout={layout}>
+            <NoteEditor key={editorNoteId} noteId={editorNoteId} layout={layout} framed />
+          </EditorFrame>
+        )}
       </AnimatePresence>
 
       <ConfirmDialog

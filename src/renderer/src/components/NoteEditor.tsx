@@ -20,6 +20,7 @@ interface Props {
   layout: LayoutSize
   /** Floating note window: closing closes the window, and the window can stay on top. */
   embedded?: boolean
+  framed?: boolean
 }
 
 const PANEL_WIDTH: Record<LayoutSize, number> = { narrow: 0, normal: 440, wide: 520 }
@@ -31,7 +32,7 @@ interface Draft {
   body: string
 }
 
-export default function NoteEditor({ noteId, layout, embedded }: Props): ReactElement | null {
+export default function NoteEditor({ noteId, layout, embedded, framed }: Props): ReactElement | null {
   const note = useAppStore((s) => s.notes.find((n) => n.id === noteId))
   const closeEditor = useAppStore((s) => s.closeEditor)
   const updateNote = useAppStore((s) => s.updateNote)
@@ -178,9 +179,9 @@ export default function NoteEditor({ noteId, layout, embedded }: Props): ReactEl
   return (
     <motion.section
       aria-label="Редактор заметки"
-      initial={embedded ? false : { opacity: 0, x: 24 }}
+      initial={embedded || framed ? false : { opacity: 0, x: 24 }}
       animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 24 }}
+      exit={framed ? undefined : { opacity: 0, x: 24 }}
       transition={{ duration: 0.2, ease: EASE_OUT }}
       onKeyDown={(e) => {
         if (e.key === 'Escape' && !e.defaultPrevented) {
@@ -188,8 +189,8 @@ export default function NoteEditor({ noteId, layout, embedded }: Props): ReactEl
           handleClose()
         }
       }}
-      style={covers ? undefined : { width: PANEL_WIDTH[layout] }}
-      className={cn('flex h-full shrink-0 flex-col bg-canvas', covers ? 'absolute inset-0 z-20' : 'border-l border-line')}
+      style={covers || framed ? undefined : { width: PANEL_WIDTH[layout] }}
+      className={cn('flex min-h-0 flex-col bg-canvas', framed ? 'flex-1' : covers ? 'absolute inset-0 z-20 h-full' : 'h-full shrink-0 border-l border-line')}
     >
       <div className={cn('flex h-14 shrink-0 items-center justify-between gap-2 px-3', embedded && 'drag-region')}>
         <div className="no-drag flex items-center gap-1">
@@ -229,7 +230,7 @@ export default function NoteEditor({ noteId, layout, embedded }: Props): ReactEl
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div data-note-scroll className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
         <div className={cn('mx-auto flex w-full flex-1 flex-col px-6 pb-6 pt-2', covers && 'max-w-[760px]')}>
           <div className="mb-1 flex items-center gap-2">
             <EmojiPicker emoji={note.emoji} contextText={`${title} ${htmlToPlainText(body)}`} onSelect={(emoji) => void updateNote(noteId, { emoji })} />

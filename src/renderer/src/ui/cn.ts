@@ -11,13 +11,13 @@ export const motionPresets = {
     initial: { opacity: 0, scale: 0.98, y: -4 },
     animate: { opacity: 1, scale: 1, y: 0 },
     exit: { opacity: 0, scale: 0.98, y: -2 },
-    transition: { duration: 0.14, ease: EASE_OUT }
+    transition: { duration: 0.18, ease: EASE_OUT }
   },
   modal: {
     initial: { opacity: 0, scale: 0.98, y: 6 },
     animate: { opacity: 1, scale: 1, y: 0 },
     exit: { opacity: 0, scale: 0.98, y: 4 },
-    transition: { duration: 0.18, ease: EASE_OUT }
+    transition: { duration: 0.24, ease: EASE_OUT }
   },
   fade: {
     initial: { opacity: 0 },

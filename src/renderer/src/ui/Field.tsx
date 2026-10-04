@@ -29,7 +29,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       )}
     >
       {leading && <span className="flex shrink-0 text-fg-muted">{leading}</span>}
-      <input ref={ref} className={cn('h-full w-full min-w-0 bg-transparent outline-none', className)} {...rest} />
+      <input ref={ref} aria-invalid={invalid || undefined} className={cn('h-full w-full min-w-0 bg-transparent outline-none', className)} {...rest} />
       {trailing}
     </div>
   )

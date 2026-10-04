@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ClipboardEvent,
@@ -12,6 +13,7 @@ import {
   type ReactNode
 } from 'react'
 import type { OcrSource } from '@shared/blocks'
+import { shouldFollowAppend } from '@shared/editorWorkspace'
 import { sanitizeHtmlForDisplay } from '../utils/sanitizeHtml'
 import { useAppStore } from '../store/useAppStore'
 import { Divider, DropdownMenu, IconButton, Menu, MenuItem, MenuLabel, MenuSeparator, Popover } from '../ui'
@@ -140,10 +142,9 @@ export default function RichTextEditor({
   }
 
   const syncedRevision = useRef(externalRevision)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!ref.current) return
     const external = externalRevision !== syncedRevision.current
-    syncedRevision.current = externalRevision
     if (skipNextSync.current && !external) {
       skipNextSync.current = false
       return
@@ -151,14 +152,43 @@ export default function RichTextEditor({
     skipNextSync.current = false
     const clean = sanitizeHtmlForDisplay(html)
     if (ref.current.innerHTML !== clean) {
-      const hadFocus = document.activeElement === ref.current
-      ref.current.innerHTML = clean
+      const editor = ref.current
+      const scroll = editor.closest<HTMLElement>('[data-note-scroll]')
+      const hadFocus = document.activeElement === editor
+      const selection = window.getSelection()
+      let editingEarlier = false
+      if (selection?.rangeCount && editor.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+        const tail = selection.getRangeAt(0).cloneRange()
+        tail.selectNodeContents(editor)
+        tail.setStart(selection.getRangeAt(0).endContainer, selection.getRangeAt(0).endOffset)
+        editingEarlier = !selection.isCollapsed || (hadFocus && tail.toString().length > 80)
+      }
+      const follow = external && scroll && shouldFollowAppend({
+        grew: clean.length > editor.innerHTML.length,
+        nearBottom: scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 96,
+        editingEarlier,
+        searching: Boolean(highlightQuery.trim())
+      })
+      syncedRevision.current = externalRevision
+      editor.innerHTML = clean
       markCode()
       setContentVersion((v) => v + 1)
       // Keep the caret where it was when an outside change re-renders the text.
-      if (external && hadFocus && caret.current) placeCaret(ref.current, caret.current)
+      if (external && hadFocus && caret.current) placeCaret(editor, caret.current)
+      if (follow) {
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        const frame = requestAnimationFrame(() => {
+          scroll.scrollTo({ top: scroll.scrollHeight, behavior: reduced ? 'instant' : 'smooth' })
+          if (!reduced) editor.lastElementChild?.animate(
+            [{ opacity: 0.55, transform: 'translateY(3px)' }, { opacity: 1, transform: 'translateY(0)' }],
+            { duration: 220, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }
+          )
+        })
+        return () => cancelAnimationFrame(frame)
+      }
     }
-  }, [html, externalRevision])
+    return undefined
+  }, [html, externalRevision, highlightQuery])
 
   // Words searched for are marked in the open note without touching its DOM.
   useEffect(() => {

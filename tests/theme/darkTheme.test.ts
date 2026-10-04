@@ -156,6 +156,7 @@ describe('light theme is untouched', () => {
     expect(light['--input-bg']).toBe('var(--surface-2)')
     expect(light['--surface-selected']).toBe('var(--surface-2)')
     expect(light['--toggle-off']).toBe('var(--border-normal)')
-    expect(light['--shadow-card']).toBe('none')
+    // A transparent shadow is visually empty and valid inside a comma-separated glow stack.
+    expect(light['--shadow-card']).toBe('0 0 0 transparent')
   })
 })

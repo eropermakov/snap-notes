@@ -7,6 +7,9 @@ export const FONT_SIZE_MAX = 24
 /** Editor fonts offered in settings (only installed ones are shown). '' = the app default. */
 export const EDITOR_FONTS = ['Segoe UI', 'Arial', 'Calibri', 'Cambria', 'Georgia', 'Times New Roman', 'Verdana', 'Tahoma', 'Trebuchet MS', 'Consolas'] as const
 
+/** Local font assets shipped with the app, with Cyrillic and Latin glyphs. */
+export const BUNDLED_EDITOR_FONTS = ['Montserrat', 'Manrope', 'Inter', 'Open Sans', 'Roboto', 'Nunito Sans', 'Rubik', 'Onest', 'Source Sans 3', 'Noto Sans', 'Lora', 'Noto Serif'] as const
+
 export function clampFontSize(value: unknown): number {
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n)) return 14
