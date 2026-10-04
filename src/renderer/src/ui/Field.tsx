@@ -4,7 +4,7 @@ import { SearchIcon, ChevronDownIcon, CloseIcon } from '../components/icons'
 import { Kbd } from './Badge'
 
 const FIELD =
-  'rounded-xl border border-[var(--border-input)] bg-input text-base text-fg transition-[border-color,box-shadow,background-color] duration-fast ease-out hover:border-[var(--border-strong)] focus-within:border-[var(--border-focus)] focus-within:bg-canvas focus-within:shadow-focus'
+  'ui-field rounded-xl border border-[var(--border-input)] bg-input text-base text-fg transition-[border-color,box-shadow,background-color] duration-fast ease-out hover:border-[var(--border-strong)] focus-within:border-[var(--border-focus)] focus-within:bg-canvas focus-within:shadow-focus'
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   leading?: ReactNode

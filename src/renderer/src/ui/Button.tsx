@@ -39,6 +39,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       className={cn(
         'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap font-medium transition-colors duration-fast ease-out',
         'disabled:pointer-events-none disabled:opacity-45',
+        `ui-button ui-button-${variant}`,
         VARIANTS[variant],
         SIZES[size],
         className

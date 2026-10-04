@@ -661,12 +661,17 @@
 }
 
 .note-card {
+  --card-glow: color-mix(in srgb, var(--card-border, var(--accent)) 18%, transparent);
   background: var(--card-bg, var(--surface-1));
   border-color: var(--card-border, var(--border-card));
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 var(--surface-sheen), 0 5px 18px -8px var(--card-glow), var(--shadow-card);
+  transition: background-color 160ms ease-out, border-color 160ms ease-out, box-shadow 160ms ease-out;
 }
 .note-card:hover {
   background: color-mix(in srgb, var(--card-bg, var(--surface-2)) 92%, var(--text-primary));
   border-color: var(--border-strong);
+  box-shadow: inset 0 1px 0 var(--surface-sheen), 0 8px 26px -7px var(--card-glow), var(--shadow-card);
 }
 .note-card[data-open='true'] {
   background: color-mix(in srgb, var(--card-bg, var(--surface-selected)) 88%, var(--text-primary));
@@ -674,7 +679,61 @@
 }
 .note-card[data-selected='true'] {
   border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), 0 6px 24px -8px var(--card-glow);
+}
+
+/* Store reference: colour spills outside cards; content surfaces stay opaque. */
+:root,
+[data-theme$='-light'] {
+  --surface-sheen: rgba(255, 255, 255, 0.65);
+  --control-shadow: rgba(20, 22, 20, 0.09);
+}
+[data-theme$='-dark'] {
+  --surface-sheen: rgba(255, 255, 255, 0.08);
+  --control-shadow: rgba(0, 0, 0, 0.3);
+}
+[data-theme$='-dark'] .note-card {
+  --card-glow: color-mix(in srgb, var(--card-border, var(--accent)) 46%, transparent);
+}
+/* Dense rows keep a tighter halo so neighbouring rows remain distinct. */
+div.note-card {
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 var(--surface-sheen), 0 3px 10px -6px var(--card-glow);
+}
+div.note-card[data-selected='true'] {
   box-shadow: 0 0 0 2px var(--accent);
+}
+.ui-button {
+  border-radius: 8px;
+  transition: background-color 140ms ease-out, box-shadow 140ms ease-out;
+}
+.ui-button-primary,
+.ui-button-secondary,
+.ui-button-danger {
+  box-shadow: inset 0 1px 0 var(--surface-sheen), inset 0 -1px 0 var(--control-shadow), 0 2px 4px var(--control-shadow);
+}
+.ui-button-primary:not(:disabled):hover {
+  box-shadow: inset 0 1px 0 var(--surface-sheen), 0 4px 16px -5px color-mix(in srgb, var(--accent) 48%, transparent);
+}
+.ui-button-secondary:not(:disabled):hover {
+  box-shadow: inset 0 1px 0 var(--surface-sheen), 0 0 12px -4px var(--focus-ring);
+}
+.ui-button:active:not(:disabled) {
+  box-shadow: inset 0 1px 3px var(--control-shadow);
+}
+.ui-button:disabled { box-shadow: none; }
+.ui-field {
+  border-radius: 8px;
+  box-shadow: inset 0 -1px 0 var(--border-strong);
+}
+.ui-field:focus-within {
+  box-shadow: inset 0 -2px 0 var(--accent), 0 0 0 2px var(--focus-ring);
+}
+.ui-field:has(input:disabled),
+.ui-field:has(select:disabled) { box-shadow: none; }
+.ui-dialog {
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 var(--surface-sheen), var(--shadow-modal), 0 0 44px -20px var(--focus-ring);
 }
 
 /* Colour swatch in the picker (the ring + check carry the "selected" meaning, not colour alone). */
