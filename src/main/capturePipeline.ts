@@ -385,8 +385,6 @@ async function commitJob(job: OcrJob, result: OcrJobResult): Promise<void> {
   if (!updated) throw new Error('note not found')
   lastCommit = { noteId, sourceId: job.sourceId, notice, warn: Boolean(result.flagged || result.offlineFallback) }
   broadcast(IPC.ON_NOTE_UPDATED, updated)
-  // The editor moves the new blocks to the caret if the caret was in this note's text.
-  if (!job.replacesSource) broadcast(IPC.ON_CAPTURE_ADDED, { noteId, sourceId: job.sourceId })
 }
 
 /** The lines this capture shares with the end of the previous one (a long page captured in pieces) are not added twice. */
@@ -417,7 +415,6 @@ async function writePlaceholder(job: OcrJob, imagePromise: Promise<Buffer>): Pro
   )
   if (updated) {
     broadcast(IPC.ON_NOTE_UPDATED, updated)
-    broadcast(IPC.ON_CAPTURE_ADDED, { noteId, sourceId: job.sourceId })
   }
 }
 

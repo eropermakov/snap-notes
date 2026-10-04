@@ -43,6 +43,7 @@ import { API_KEY_PROVIDERS } from '../shared/providers'
 import { createProviderSystem, type ProviderSystem } from './providers'
 import { registerProviderIpc } from './providersIpc'
 import { logEvent } from './logger'
+import { createFileJobStore } from './ocr/jobStore'
 import { IPC } from '../shared/ipc'
 import { AppSettings, HotkeyRegistrationResult } from '../shared/types'
 
@@ -275,7 +276,12 @@ if (!gotLock) {
       optimizer.watchWindowShortcuts(window)
     })
 
-    await initNotesStore()
+    // Protect targets before cleaning empty auto-notes; OCR recovery runs after stores and UI exist.
+    const savedJobs = await createFileJobStore(join(app.getPath('userData'), 'ocr-queue')).loadAll()
+    const pendingCaptureNotes = new Set(savedJobs
+      .filter((job) => job.status !== 'COMPLETED' && job.status !== 'CANCELLED')
+      .map((job) => job.targetNoteId))
+    await initNotesStore(pendingCaptureNotes)
     await initFoldersStore()
     await initScreenshotCache()
 

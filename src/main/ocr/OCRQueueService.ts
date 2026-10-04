@@ -101,6 +101,7 @@ export class OCRQueueService {
   private inFlight = 0
   private paused = false
   private commitChain: Promise<void> = Promise.resolve()
+  private enqueueChain: Promise<unknown> = Promise.resolve()
   private readonly cancelled = new Set<string>()
   private run = { ...EMPTY_QUEUE_STATE.run, noteIds: new Set<string>(), reported: true, lastNoteId: undefined as string | undefined, lastActive: 0 }
   private draining = false
@@ -117,7 +118,15 @@ export class OCRQueueService {
    * Accepts a capture. When this resolves the screenshot and the job record are safely on disk and
    * the caller is free to continue; recognition is not awaited.
    */
-  async enqueue(input: EnqueueInput): Promise<OcrJob> {
+  enqueue(input: EnqueueInput): Promise<OcrJob> {
+    // Publish accepted captures in call order. A small, later screenshot must not become
+    // visible to workers while an earlier one is still being persisted.
+    const accepted = this.enqueueChain.then(() => this.persistCapture(input))
+    this.enqueueChain = accepted.catch(() => undefined)
+    return accepted
+  }
+
+  private async persistCapture(input: EnqueueInput): Promise<OcrJob> {
     const sequenceNumber = await this.deps.store.nextSequence()
     const id = this.deps.newId()
     const sourceImagePath = await this.deps.store.writeImage(id, input.png)

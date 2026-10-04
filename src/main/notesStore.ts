@@ -95,7 +95,7 @@ async function backupBeforeMigration(dir: string, files: string[]): Promise<bool
   }
 }
 
-export async function initNotesStore(): Promise<void> {
+export async function initNotesStore(pendingCaptureNotes: ReadonlySet<string> = new Set()): Promise<void> {
   const dir = getNotesDir()
   await fs.mkdir(dir, { recursive: true })
   const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.json'))
@@ -140,7 +140,7 @@ export async function initNotesStore(): Promise<void> {
     }
     cache.set(note.id, note)
   }
-  await sweepEmptyAutoNotes()
+  await sweepEmptyAutoNotes(pendingCaptureNotes)
 }
 
 function readNoteMetaFields(parsed: Partial<Note>): Pick<Note, 'folderId' | 'favorite' | 'color' | 'tags' | 'autoCreated' | 'titleManual'> {
@@ -156,9 +156,9 @@ function readNoteMetaFields(parsed: Partial<Note>): Pick<Note, 'folderId' | 'fav
 }
 
 /** Auto-created notes that were never filled (e.g. the app closed during a capture) are removed. */
-async function sweepEmptyAutoNotes(): Promise<void> {
+async function sweepEmptyAutoNotes(pendingCaptureNotes: ReadonlySet<string>): Promise<void> {
   for (const note of Array.from(cache.values())) {
-    if (isDiscardableAutoNote(note)) await permanentlyDeleteNote(note.id)
+    if (!pendingCaptureNotes.has(note.id) && isDiscardableAutoNote(note)) await permanentlyDeleteNote(note.id)
   }
 }
 

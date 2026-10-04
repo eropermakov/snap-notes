@@ -36,7 +36,7 @@ import {
   WrapTextIcon,
   ScanTextIcon
 } from './icons'
-import { moveSourceToCaret, placeCaret, readCaret, type CaretPosition } from './editor/caret'
+import { placeCaret, readCaret, type CaretPosition } from './editor/caret'
 import FragmentTools from './editor/FragmentTools'
 import UncertainHover from './editor/UncertainHover'
 import TableToolbar from './editor/TableToolbar'
@@ -204,33 +204,6 @@ export default function RichTextEditor({
     document.addEventListener('selectionchange', onSelection)
     return () => document.removeEventListener('selectionchange', onSelection)
   }, [])
-
-  // A capture was appended to this note: move it to the caret, if the caret was in the text.
-  useEffect(() => {
-    if (!noteId) return undefined
-    return window.api.notes.onCaptureAdded(({ noteId: target, sourceId }) => {
-      if (target !== noteId) return
-      const saved = caret.current
-      if (!saved) return
-      let attempts = 0
-      const tryMove = (): void => {
-        const el = ref.current
-        if (!el) return
-        const present = el.querySelector(`[data-src="${CSS.escape(sourceId)}"]`)
-        if (!present) {
-          // The note HTML re-renders after the store update; wait for it.
-          if (attempts++ < 60) requestAnimationFrame(tryMove)
-          return
-        }
-        const next = moveSourceToCaret(el, sourceId, saved)
-        if (!next) return
-        caret.current = next
-        if (document.activeElement === el) placeCaret(el, next)
-        handleInput()
-      }
-      requestAnimationFrame(tryMove)
-    })
-  }, [noteId, handleInput])
 
   /** Puts the selection back (menus take focus away from the text) and focuses the editor. */
   const restoreSelection = (): void => {

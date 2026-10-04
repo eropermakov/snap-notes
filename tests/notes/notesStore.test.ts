@@ -179,6 +179,17 @@ describe('notes store: actions', () => {
     expect(store.getNote(keep.id)).toBeDefined()
   })
 
+  it('keeps empty auto-created notes targeted by recoverable OCR jobs at start', async () => {
+    let store = await freshStore()
+    await store.initNotesStore()
+    const pending = await store.createNote({ autoCreated: true })
+    const abandoned = await store.createNote({ autoCreated: true })
+    store = await freshStore()
+    await store.initNotesStore(new Set([pending.id]))
+    expect(store.getNote(pending.id)).toBeDefined()
+    expect(store.getNote(abandoned.id)).toBeUndefined()
+  })
+
   it('a title the user typed is never replaced automatically; an auto title is', async () => {
     const store = await freshStore()
     await store.initNotesStore()

@@ -45,6 +45,40 @@ describe('capture does not wait for recognition', () => {
 })
 
 describe('sequential processing and order', () => {
+  it('continues accepting captures after a screenshot could not be saved', async () => {
+    const h = make()
+    const writeImage = h.store.writeImage.bind(h.store)
+    h.store.writeImage = async (id, png) => {
+      if (png.equals(pngOf('broken'))) throw new Error('disk write failed')
+      return writeImage(id, png)
+    }
+    await expect(capture(h, 'broken')).rejects.toThrow('disk write failed')
+    await capture(h, 'next')
+    await h.queue.whenIdle()
+    expect(h.notes.get('A')).toEqual(['next'])
+  })
+
+  it('does not let a later capture overtake an earlier screenshot still being saved', async () => {
+    const h = make({ settings: { maxConcurrent: 3 } })
+    const writeImage = h.store.writeImage.bind(h.store)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    h.store.writeImage = async (id, png) => {
+      if (png.equals(pngOf('first'))) await gate
+      return writeImage(id, png)
+    }
+    const first = capture(h, 'first')
+    const second = capture(h, 'second')
+    const third = capture(h, 'third')
+    await wait(60)
+    const early = [...h.committed]
+    release()
+    await Promise.all([first, second, third])
+    await h.queue.whenIdle()
+    expect(early).toEqual([])
+    expect(h.notes.get('A')).toEqual(['first', 'second', 'third'])
+  })
+
   it('one worker by default: recognitions never overlap and run in capture order', async () => {
     const h = make()
     h.script = () => wait(5)

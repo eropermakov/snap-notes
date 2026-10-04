@@ -140,12 +140,6 @@ const api = {
     /** "Проверить распознавание": replaces one capture's blocks with corrected HTML. */
     replaceSourceHtml: (id: string, sourceId: string, html: string): Promise<Note | null> =>
       ipcRenderer.invoke(IPC.NOTES_REPLACE_SOURCE_HTML, id, sourceId, html),
-    /** A capture was appended to a note; the editor may move it to the caret. */
-    onCaptureAdded: (cb: (payload: { noteId: string; sourceId: string }) => void): Unsubscribe => {
-      const listener = (_e: unknown, payload: { noteId: string; sourceId: string }): void => cb(payload)
-      ipcRenderer.on(IPC.ON_CAPTURE_ADDED, listener)
-      return () => ipcRenderer.removeListener(IPC.ON_CAPTURE_ADDED, listener)
-    },
     /** Undo one capture: removes its blocks, metadata and original screenshot. */
     removeSource: (id: string, sourceId: string): Promise<Note | null> => ipcRenderer.invoke(IPC.NOTES_REMOVE_SOURCE, id, sourceId),
     /** "Привести в порядок" for one captured fragment: fixes OCR, keeps the meaning. */

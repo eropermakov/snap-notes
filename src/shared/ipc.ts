@@ -100,7 +100,6 @@ export const IPC = {
   HUD_ACTION: 'hud:action',
 
   NOTES_REPLACE_SOURCE_HTML: 'notes:replaceSourceHtml',
-  ON_CAPTURE_ADDED: 'on:capture:added',
 
   ON_NOTE_CREATED: 'on:note:created',
   ON_NOTE_UPDATED: 'on:note:updated',
